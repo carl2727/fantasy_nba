@@ -1,0 +1,45 @@
+{% extends 'fantasy_nba/base.html' %}
+{% load extras %}
+{% block content %}
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Ratings</title>
+    <script src="https://unpkg.com/htmx.org@1.9.10" integrity="sha384-D1Kt99CQMDuV3HsxodGtHcjJEcUzjNWLmvMS06p+g0IBzlnPbNIuvlIr3PQ0aKlW" crossorigin="anonymous"></script>
+    <style>
+        th, td {
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+    <h1>Ratings</h1>
+
+    <table id="ratings-table">
+        <colgroup>
+            <col style="width: 15%;">
+            <col style="width: 8%;">
+            <col style="width: 8%;">
+            <col style="width: 8%;">
+            <col style="width: 8%;">
+            <col style="width: 8%;">
+            <col style="width: 8%;">
+            <col style="width: 8%;">
+            <col style="width: 8%;">
+        </colgroup>
+        <thead>
+            <tr>
+                {% for column_key, display_name in column_display_names.items %}
+                    <th>
+                        <a href="#" hx-get="{% url 'sort_ratings' %}?sort_by={{ column_key }}" hx-target="#ratings-table tbody" hx-swap="innerHTML">{{ display_name }}</a>
+                    </th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% include 'fantasy_nba/ratings_table_rows.html' %}
+        </tbody>
+    </table>
+</body>
+</html>
+{% endblock %}
