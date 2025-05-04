@@ -1,14 +1,36 @@
+<!-- show_ratings.html  -->
 {% extends 'fantasy_nba/base.html' %}
 {% load extras %}
 {% block content %}
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Ratings</title>
+    <title>Sortable Ratings</title>
     <script src="https://unpkg.com/htmx.org@1.9.10" integrity="sha384-D1Kt99CQMDuV3HsxodGtHcjJEcUzjNWLmvMS06p+g0IBzlnPbNIuvlIr3PQ0aKlW" crossorigin="anonymous"></script>
     <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
         th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
             text-align: left;
+            box-sizing: border-box;
+        }
+        th a {
+            display: block; /* Make the entire header clickable */
+            text-decoration: none;
+            color: inherit;
+        }
+        .sort-asc::after {
+            content: " ▲";
+        }
+        .sort-desc::after {
+            content: " ▼";
+        }
+        tbody {
+            display: table-row-group; /* Explicitly define tbody display */
         }
     </style>
 </head>
@@ -16,27 +38,37 @@
     <h1>Ratings</h1>
 
     <table id="ratings-table">
-        <colgroup>
-            <col style="width: 15%;">
-            <col style="width: 8%;">
-            <col style="width: 8%;">
-            <col style="width: 8%;">
-            <col style="width: 8%;">
-            <col style="width: 8%;">
-            <col style="width: 8%;">
-            <col style="width: 8%;">
-            <col style="width: 8%;">
-        </colgroup>
         <thead>
             <tr>
                 {% for column_key, display_name in column_display_names.items %}
                     <th>
-                        <a href="#" hx-get="{% url 'sort_ratings' %}?sort_by={{ column_key }}" hx-target="#ratings-table tbody" hx-swap="innerHTML">{{ display_name }}</a>
+                        <a href="{% url 'sort_ratings' %}?sort_by={{ column_key }}">
+                            {{ display_name }}
+                            {% if sort_by == column_key and sort_direction == 'asc' %} ▲{% endif %}
+                            {% if sort_by == column_key and sort_direction == 'desc' %} ▼{% endif %}
+                        </a>
                     </th>
                 {% endfor %}
             </tr>
         </thead>
-        <tbody>
+        <tbody id="ratings-table-body">
+            {% if ratings|length == 0 %}
+                <tr><td colspan="{{ column_display_names|length }}">No ratings available</td></tr>
+            {% else %}
+                {% for row in ratings %}
+                    <tr>
+                        {% for column_key, _ in column_display_names.items %}
+                            <td>
+                                {% if column_key == 'Name' %}
+                                    {{ row|get_item:column_key }}
+                                {% else %}
+                                    {{ row|get_item:column_key|floatformat:2 }}
+                                {% endif %}
+                            </td>
+                        {% endfor %}
+                    </tr>
+                {% endfor %}
+            {% endif %}
             {% include 'fantasy_nba/ratings_table_rows.html' %}
         </tbody>
     </table>

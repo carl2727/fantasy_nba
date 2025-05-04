@@ -1,31 +1,17 @@
+<!-- ratings_table_rows.html -->
 {% load extras %}
-<table>
-    <colgroup>
-        <col style="width: 15%;">
-        <col style="width: 8%;">
-        <col style="width: 8%;">
-        <col style="width: 8%;">
-        <col style="width: 8%;">
-        <col style="width: 8%;">
-        <col style="width: 8%;">
-        <col style="width: 8%;">
-        <col style="width: 8%;">
-    </colgroup>
-    <tbody>
-        {% for row in ratings %}
-            <tr>
-                {% for column in columns %}
-                    <td>
-                        {% if column == 'Name' %}
-                            {{ row|get_item:column }}
-                        {% else %}
-                            {{ row|get_item:column|floatformat:2 }}
-                        {% endif %}
-                    </td>
-                {% endfor %}
-            </tr>
-        {% empty %}
-            <tr><td colspan="{{ columns|length }}">No ratings available</td></tr>
+{% for row in ratings %}
+    <tr>
+        {% for column_key, _ in column_display_names.items %}
+            <td>
+                {% if column_key == 'Name' %}
+                    {{ row|get_item:column_key }}
+                {% else %}
+                    {{ row|get_item:column_key|floatformat:2 }}
+                {% endif %}
+            </td>
         {% endfor %}
-    </tbody>
-</table>
+    </tr>
+{% empty %}
+    <tr><td colspan="{{ column_display_names|length }}">No ratings available</td></tr>
+{% endfor %}

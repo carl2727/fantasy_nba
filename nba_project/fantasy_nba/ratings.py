@@ -5,8 +5,8 @@ from .helpers import normalize
 from .weeks import calculate_games_per_week
 
 # Define columns
-categories = ['FG%', 'FT%', 'PTS', 'FG3M', 'REB', 'BLK', 'AST', 'TOV']
-rating_columns = ['FG%_RT', 'FT%_RT', 'FG3M_RT', 'PTS_RT', 'REB_RT', 'AST_RT', 'BLK_RT', 'TOV_RT']
+categories = ['FGN', 'FTN', 'PTS', 'FG3M', 'REB', 'BLK', 'STL', 'AST', 'TOV']
+rating_columns = ['FGN_RT', 'FTN_RT', 'FG3M_RT', 'PTS_RT', 'REB_RT', 'AST_RT', 'BLK_RT', 'STL_RT','TOV_RT']
 
 # Load data
 game_stats_file = "data/all_player_game_stats_2024_2025.csv"
@@ -31,18 +31,25 @@ stats = pd.merge(
 stats.rename(columns={'DISPLAY_FIRST_LAST': 'Name'}, inplace=True)
 stats.drop(columns=['PERSON_ID'])
 
-stats['FGPM'] = stats['FGM'] - (stats['FGA'] - stats['FGM'])
-stats['FG%'] = stats['FGPM'] - stats['FGPM'].min()
-stats['FTPM'] = stats['FTM'] - (stats['FTA'] - stats['FTM'])
-stats['FT%'] = stats['FTPM'] - stats['FTPM'].min()
+def calc_fgn_ftn(stats):
+    stats['FGPM'] = stats['FGM'] - (stats['FGA'] - stats['FGM'])
+    stats['FGN'] = stats['FGPM'] - stats['FGPM'].min()
+    stats['FTPM'] = stats['FTM'] - (stats['FTA'] - stats['FTM'])
+    stats['FTN'] = stats['FTPM'] - stats['FTPM'].min()
+    
+    # Debug: Print the DataFrame after adding the columns
+    print("Stats DataFrame inside calc_fgn_ftn:")
+    print(stats.head())
+    return stats
 
 # Calculate ratings 
+stats = calc_fgn_ftn(stats)
 for cat in categories:
     stats[cat + '_RT'] = normalize(stats[cat])
 
 stats['TOV_RT'] = stats['TOV_RT'] * (-1)
 
-ratings = stats[['Name', 'Player_ID', 'TEAM_ID', 'FG%_RT', 'FT%_RT', 'FG3M_RT', 'PTS_RT', 'REB_RT', 'AST_RT', 'BLK_RT', 'TOV_RT']]
+ratings = stats[['Name', 'Player_ID', 'TEAM_ID', 'FGN_RT', 'FTN_RT', 'FG3M_RT', 'PTS_RT', 'REB_RT', 'AST_RT', 'BLK_RT', 'STL_RT', 'TOV_RT']]
 
 ratings.loc[:, 'Total_Rating'] = ratings[rating_columns].sum(axis=1)
 ratings.loc[:, 'Total_Rating'] = normalize(ratings['Total_Rating'])
@@ -71,6 +78,14 @@ for player in weekly_ratings['Player_ID']:
 for col in weekly_ratings.columns:
     if col.startswith('Rating_Week_'):
         weekly_ratings.loc[:, col] = normalize(weekly_ratings[col])
+        
+# Punt Ratings
+def punt_rating(punt_cats):
+    cats = rating_columns - punt_cats
+    print(f" categories: {cats}")
+
+
+
 
 # Selecting relevant players
 ratings.sort_values('Total_Rating', ascending=False, inplace=True)
