@@ -1,0 +1,28 @@
+
+.bg-green {
+    background-color: #90EE90;
+
+}
+.bg-light-green {
+    background-color: #C8E6C9;
+
+}
+.bg-red {
+    background-color: #F44336;
+    color: white;
+}
+.bg-light-red {
+    background-color: #FFCDD2;
+
+}
+
+table.table td {
+    padding: 0.5rem;
+    vertical-align: middle;
+}
+
+table.table th {
+    padding: 0.5rem;
+    vertical-align: middle;
+}
+*/

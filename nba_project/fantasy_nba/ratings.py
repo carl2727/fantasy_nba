@@ -3,6 +3,7 @@ import pandas as pd
 from .games_played import calculate_player_availability_score
 from .helpers import normalize
 from .weeks import calculate_games_per_week
+import itertools
 
 # Define columns
 categories = ['FGN', 'FTN', 'PTS', 'FG3M', 'REB', 'BLK', 'STL', 'AST', 'TOV']
@@ -80,11 +81,27 @@ for col in weekly_ratings.columns:
         weekly_ratings.loc[:, col] = normalize(weekly_ratings[col])
         
 # Punt Ratings
-def punt_rating(punt_cats):
-    cats = rating_columns - punt_cats
-    print(f" categories: {cats}")
+punt_combos = []
+for i in range(1, 3):
+    for combo in itertools.combinations(rating_columns, i):
+        punt_combos.append(list(combo))
 
+print("Punt Combos:", punt_combos)
 
+for punted_categories in punt_combos:
+    remain_cols = [col for col in rating_columns if col not in punted_categories]
+    if remain_cols:
+        punt_name = "_Punt_" + "_".join(sorted([cat.replace('_RT', '') for cat in punted_categories]))
+        ratings.loc[:, f'Total{punt_name}_Rating'] = ratings[remain_cols].sum(axis=1)
+        ratings.loc[:, f'Total{punt_name}_Rating'] = normalize(ratings[f'Total{punt_name}_Rating'])
+
+        ratings.loc[:, f'Total{punt_name}_Available_Rating'] = ratings.apply(
+            lambda row: row[f'Total{punt_name}_Rating'] * player_availability_score.get(row['Player_ID'], 0),
+            axis=1
+        )
+        ratings.loc[:, f'Total{punt_name}_Available_Rating'] = normalize(ratings[f'Total{punt_name}_Available_Rating'])
+    else:
+        print(f"Warning: All rating columns are punted in {punted_categories}. Skipping.")
 
 
 # Selecting relevant players

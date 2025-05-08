@@ -1,6 +1,8 @@
 <!-- show_ratings.html  -->
 {% extends 'fantasy_nba/base.html' %}
+{% load static %}
 {% load extras %}
+{% load fantasy_nba_tags %}
 {% block content %}
 <!DOCTYPE html>
 <html>
@@ -19,7 +21,7 @@
             box-sizing: border-box;
         }
         th a {
-            display: block; /* Make the entire header clickable */
+            display: block;
             text-decoration: none;
             color: inherit;
         }
@@ -30,8 +32,22 @@
             content: " ▼";
         }
         tbody {
-            display: table-row-group; /* Explicitly define tbody display */
+            display: table-row-group;
         }
+        .bg-green {
+            background-color: #90EE90; /* LightGreen */
+        }
+        .bg-light-green {
+            background-color: #C8E6C9; /* A paler green */
+        }
+        .bg-red {
+            background-color: #F44336; /* A clear red */
+            color: white; /* Text color for contrast */
+        }
+        .bg-light-red {
+            background-color: #FFCDD2; /* A light red/pink */
+        }
+
     </style>
 </head>
 <body>
@@ -56,20 +72,33 @@
                 <tr><td colspan="{{ column_display_names|length }}">No ratings available</td></tr>
             {% else %}
                 {% for row in ratings %}
-                    <tr>
-                        {% for column_key, _ in column_display_names.items %}
-                            <td>
-                                {% if column_key == 'Name' %}
-                                    {{ row|get_item:column_key }}
-                                {% else %}
-                                    {{ row|get_item:column_key|floatformat:2 }}
-                                {% endif %}
-                            </td>
-                        {% endfor %}
-                    </tr>
+                <tr>
+                    {% for column_actual_name, column_display_name_val in column_display_names.items %}
+                        {% with cell_content=row|get_item:column_actual_name %}
+                            {% if cell_content|is_styled_cell %}
+                                <td class="{{ cell_content.css_class|default:'' }}">
+                                    {% if column_actual_name == "Name" or column_actual_name == "Player_ID" or column_actual_name == "TEAM_ID" %}
+                                        {{ cell_content.value }}
+                                    {% else %}
+                                        {{ cell_content.value|floatformat:2|default:"N/A" }}
+                                    {% endif %}
+                                </td>
+                            {% else %}
+                                {# Fallback for unexpected data structure, or if a column is intentionally not wrapped #}
+                                <td>
+                                    {% if column_actual_name == "Name" or column_actual_name == "Player_ID" or column_actual_name == "TEAM_ID" %}
+                                        {{ cell_content }} {# Assumes cell_content is the raw value #}
+                                    {% else %}
+                                        {{ cell_content|floatformat:2|default:"N/A" }}
+                                    {% endif %}
+                                </td>
+                            {% endif %}
+                        {% endwith %}
+                    {% endfor %}
+                </tr>
                 {% endfor %}
             {% endif %}
-            {% include 'fantasy_nba/ratings_table_rows.html' %}
+            {# {% include 'fantasy_nba/ratings_table_rows.html' %} #} {# Commented out to prevent duplicate raw data #}
         </tbody>
     </table>
 </body>

@@ -1,0 +1,39 @@
+{% extends 'fantasy_nba/base.html' %}
+{% load extras %}
+{% block content %}
+    <h1>Punt Ratings</h1>
+
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit">Show Punt Ratings</button>
+    </form>
+
+    {% if punted_categories %}
+        <h2>Punting: {% for cat in punted_categories %}{{ cat }}{% if not forloop.last %}, {% endif %}{% endfor %}</h2>
+    {% endif %}
+
+    {% if punt_ratings %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Punt Performance Rating</th>
+                    </tr>
+            </thead>
+            <tbody>
+                {% for row in punt_ratings %}
+                    <tr>
+                        <td>{{ row.Name }}</td>
+                        <td>{{ row.Punt_Available_Rating|floatformat:2 }}</td>
+                        </tr>
+                {% empty %}
+                    <tr><td colspan="2">No players match this punt strategy.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% elif request.method == 'POST' %}
+        <p>No punt strategy selected. Showing overall ratings.</p>
+    {% endif %}
+
+{% endblock %}
