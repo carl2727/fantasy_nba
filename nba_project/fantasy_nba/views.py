@@ -253,5 +253,5 @@ def _apply_styles_to_data(data_list_of_dicts: list, columns_to_style: list):
         styled_data.append(styled_player_row)
     return styled_data
 
-def blog(request):
-    return render(request, 'fantasy_nba/blog.html')
+def breakdown(request):
+    return render(request, 'fantasy_nba/breakdown.html')
