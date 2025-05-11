@@ -1,4 +1,22 @@
 {% extends 'fantasy_nba/base.html' %}
 {% load extras %}
+
 {% block content %}
+<div class="project-explanation-content">
+    <h2>Ranking</h2>
+
+    To rank players for category-based fantasy basketball, we aim to create a comparable value for each of the nine standard categories. Our initial approach involves normalizing each category to a 0-100 scale. For counting stats like points, 3-pointers made, rebounds, assists, and blocks, this is achieved by dividing a player's value by the maximum value observed in that category across the league and then multiplying by 100 for readability.
+    The turnover category, being a negative contributor to fantasy scores, requires a slightly different approach. To align it with our 0-100 scale, we invert its impact. We achieve this by multiplying each player's turnover value by -1 and adding 100. This effectively transforms lower (better) turnover numbers into higher (more positive) ratings within our framework.
+    Field Goal Percentage (FG%) and Free Throw Percentage (FT%) demand a more nuanced evaluation than simple counting stats. In category leagues, the overall team percentage is what matters, making the volume of attempts and makes crucial. A player who shoots a high percentage on a large number of attempts has a greater influence on the team's percentage than a player with the same efficiency but on low volume. Our rating system needs to account for this.
+    For Field Goal Percentage, we want to account for both the efficiency and the volume of shots. To do this, we calculate a "net makes" value by subtracting the total misses (attempts minus makes) from the total makes. This "net makes" value reflects the positive contribution of made shots while implicitly penalizing for missed shots. We then normalize this "net makes" value by first subtracting the minimum "net makes" across all players (which will likely be a negative number), resulting in a positive value. Finally, we normalize this adjusted value to our 0-100 scale, similar to the counting stats. This approach ensures that players with both high efficiency and high volume receive a higher rating in this category.
+
+
+    <h2>Punting</h2>
+
+    So far we only considered an overall rating that includes all 9 categories. But when building a team for a category league there is also the valid option of punting. This means ignoring certain categories to gain more value in other categories. Winning a matchup only requires wins in 5 out of 9 categories. We won’t be able to win every category every week anyway, so why not focus on certain areas and dominate those?
+
+    When deciding which category to punt a common approach would be to focus on non counting stats. Giving up on Field Goal Percentage and Turnovers (Trae Young, James Harden) or Free Throw Percentage (Giannis Antetokounmpo) can truly unlock some players potential. 
+
+    Another approach is to focus on categories with low per-game variance and win those reliably. This means targeting categories where individual player performance fluctuates minimally from game to game.
+</div>
 {% endblock %}

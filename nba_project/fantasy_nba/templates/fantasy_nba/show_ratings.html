@@ -8,52 +8,11 @@
 <html>
 <head>
     <title>Sortable Ratings</title>
-    <script src="https://unpkg.com/htmx.org@1.9.10" integrity="sha384-D1Kt99CQMDuV3HsxodGtHcjJEcUzjNWLmvMS06p+g0IBzlnPbNIuvlIr3PQ0aKlW" crossorigin="anonymous"></script>
-    <style>
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        th, td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
-            box-sizing: border-box;
-        }
-        th a {
-            display: block;
-            text-decoration: none;
-            color: inherit;
-        }
-        .sort-asc::after {
-            content: " ▲";
-        }
-        .sort-desc::after {
-            content: " ▼";
-        }
-        tbody {
-            display: table-row-group;
-        }
-        .bg-green {
-            background-color: #90EE90; /* LightGreen */
-        }
-        .bg-light-green {
-            background-color: #C8E6C9; /* A paler green */
-        }
-        .bg-red {
-            background-color: #F44336; /* A clear red */
-            color: white; /* Text color for contrast */
-        }
-        .bg-light-red {
-            background-color: #FFCDD2; /* A light red/pink */
-        }
-
-    </style>
 </head>
 <body>
-    <h1>Ratings</h1>
+    <h1 class="header-big">Ratings</h1>
 
-    <table id="ratings-table">
+    <table id="ratings-table" class="styled-table">
         <thead>
             <tr>
                 {% for column_key, display_name in column_display_names.items %}

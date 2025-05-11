@@ -48,7 +48,7 @@ stats = calc_fgn_ftn(stats)
 for cat in categories:
     stats[cat + '_RT'] = normalize(stats[cat])
 
-stats['TOV_RT'] = stats['TOV_RT'] * (-1)
+stats['TOV_RT'] = stats['TOV_RT'] * (-1) + 100
 
 ratings = stats[['Name', 'Player_ID', 'TEAM_ID', 'FGN_RT', 'FTN_RT', 'FG3M_RT', 'PTS_RT', 'REB_RT', 'AST_RT', 'BLK_RT', 'STL_RT', 'TOV_RT']]
 

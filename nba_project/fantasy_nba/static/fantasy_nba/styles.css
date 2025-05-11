@@ -1,28 +1,167 @@
 
+
+/* General body styling (optional, but good for consistency) */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    margin: 0;
+    padding: 0;
+    background-color: #f4f4f4; /* Light gray background for the page */
+    color: #333;
+}
+
+/* Navbar styles */
+nav {
+    background-color: #ffffff; /* White background for the navbar */
+    padding: 12px 20px; /* Padding around the navbar */
+    border-bottom: 1px solid #e0e0e0; /* Subtle bottom border */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05); /* Slight shadow for depth */
+    text-align: center; /* Center the ul if it's inline-block */
+}
+
+nav ul {
+    list-style-type: none; /* Remove default bullet points */
+    margin: 0;
+    padding: 0;
+    display: inline-block; /* Allows centering of the ul if nav is text-align: center */
+}
+
+nav ul li {
+    display: inline-block; /* Arrange list items horizontally */
+    margin: 0 10px; /* Space between menu items */
+}
+
+nav ul li a {
+    text-decoration: none; /* Remove underline from links */
+    color: #4400ff; /* A pleasant blue for links */
+    padding: 10px 15px; /* Padding for links for a larger clickable area */
+    border-radius: 4px; /* Slightly rounded corners for links */
+    transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out; /* Smooth transition for hover effects */
+}
+
+nav ul li a:hover,
+nav ul li a:focus { /* :focus for accessibility */
+    background-color: #337ab7; /* Blue background on hover */
+    color: #ffffff; /* White text on hover */
+}
+
+.content {
+    padding: 20px; /* Add some padding to the main content area */
+}
+
+/* Styles for the main ratings table (scoped with .styled-table) */
+.styled-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px; /* Add some margin for separation */
+    margin-bottom: 20px;
+}
+.styled-table th, 
+.styled-table td {
+    border: 1px solid #ddd;
+    padding: 10px 12px; /* Increased padding for better spacing */
+    text-align: center;
+    box-sizing: border-box;
+}
+.styled-table th {
+    background-color: #9c9c9c;
+    color: white; /* Added for better contrast on grey background */
+    max-width: 150px; /* Slightly increased max-width for headers */
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+    line-height: 1.3em;
+    vertical-align: middle;
+}
+.styled-table th a {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+}
+.styled-table .sort-asc::after {
+    content: " ▲";
+}
+.styled-table .sort-desc::after {
+    content: " ▼";
+}
+/* 
+   The rule `tbody { display: table-row-group; }` is the default browser rendering for tbody,
+   so it's often not necessary to explicitly state it unless overriding another display property.
+   I'll keep it commented out for now unless there's a specific reason for it.
+*/
+/* .styled-table tbody { display: table-row-group; } */
+
+.bg-dark-green {
+    background-color: #18ac18;
+
+    color: white;
+}
+
 .bg-green {
-    background-color: #90EE90;
+    background-color: #68ce68;
 
 }
 .bg-light-green {
-    background-color: #C8E6C9;
+    background-color: #aae2aa;
 
 }
+
+.bg-dark-red {
+    background-color: #ff493c;
+    color: white;
+}
+
 .bg-red {
-    background-color: #F44336;
+    background-color: #ff806a;
     color: white;
 }
 .bg-light-red {
-    background-color: #FFCDD2;
+    background-color: #ffc5ab;
 
 }
-
-table.table td {
-    padding: 0.5rem;
-    vertical-align: middle;
+.bg-grey {
+    background-color: #f0f0f0;
+    color: black;
 }
 
-table.table th {
-    padding: 0.5rem;
-    vertical-align: middle;
+.header-big {
+    font-family: Helvetica, Sans-Serif;
+    font-size: 2rem;
+    font-weight: bold;
+    margin-bottom: 1rem;
+    text-align: center;
+    color: #333;
 }
-*/
+
+.project-explanation-content {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol"; /* Modern system font stack */
+    line-height: 1.7; /* Increased line height for better readability */
+    color: #333; /* Dark gray for text, easier on the eyes than pure black */
+    max-width: 800px; /* Limits line length, which aids reading */
+    margin: 20px auto; /* Centers the content block and adds top/bottom margin */
+    padding: 20px 30px; /* Padding inside the content block */
+    background-color: #fdfdfd; /* A very light background, if desired, or transparent */
+    border-radius: 4px; /* Optional: slightly rounded corners */
+}
+
+.project-explanation-content h2 {
+    font-size: 1.8em; /* Larger heading size */
+    color: #1a1a1a; /* Very dark gray for headings */
+    margin-top: 40px; /* More space above headings */
+    margin-bottom: 20px; /* Space below headings, before paragraphs */
+    padding-bottom: 10px; /* Space for the border */
+    border-bottom: 2px solid #eee; /* Subtle separator line for headings */
+}
+
+.project-explanation-content h2:first-child {
+    margin-top: 0; /* Remove top margin for the very first heading */
+}
+
+.project-explanation-content p {
+    font-size: 1rem; /* Standard paragraph font size */
+    margin-bottom: 18px; /* Space between paragraphs */
+    text-align: left; /* Standard left alignment is often best for readability */
+    /*
+    Consider 'text-align: justify;' if you prefer, but be mindful of potential
+    uneven spacing ("rivers") between words in some browsers/text.
+    */
+}

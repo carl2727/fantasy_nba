@@ -20,7 +20,21 @@ COLUMN_DISPLAY_NAMES = {
     'Total_Available_Rating': 'Performance Rating'
 }
 
-NON_STYLED_COLUMNS = ['Name', 'Player_ID', 'TEAM_ID']
+STYLED_COLUMNS = [
+    'PTS_RT', 
+    'REB_RT', 
+    'AST_RT', 
+    'STL_RT', 
+    'BLK_RT',
+    'FGN_RT',
+    'FTN_RT',
+    'FG3M_RT',
+    'TOV_RT'
+]
+
+
+def _get_default_columns():
+    """Returns the default list of columns to display."""
 
 RATING_CHOICES = [
     (key, COLUMN_DISPLAY_NAMES[key].replace('_RT', '')) for key in COLUMN_DISPLAY_NAMES if key not in ['Name', 'Total_Rating', 'Total_Available_Rating']
@@ -107,16 +121,13 @@ def show_ratings(request: HttpRequest):
     if punt_overall_col_actual_name and punt_overall_col_display_name:
         final_column_display_names[punt_overall_col_actual_name] = punt_overall_col_display_name
 
-    # Prepare data for styling
-    numeric_columns_for_styling = [col for col in columns_to_extract if col not in NON_STYLED_COLUMNS]
-    thresholds = _calculate_percentile_thresholds(ratings_df, numeric_columns_for_styling)
-    
+   
     # Create the initial list of dictionaries with only the columns to display
     initial_data_list = []
     for record in ratings_df.to_dict('records'):
         initial_data_list.append({col: record.get(col) for col in columns_to_extract})
-        
-    styled_ratings_data = _apply_styles_to_data(initial_data_list, thresholds, numeric_columns_for_styling)
+    
+    styled_ratings_data = _apply_styles_to_data(initial_data_list, STYLED_COLUMNS)
     
     context = {
         'ratings': styled_ratings_data,
@@ -190,18 +201,11 @@ def sort_ratings(request: HttpRequest):
     else:
         sorted_ratings_df = ratings_df # No sort or use default if sort_by is invalid
 
-    # Prepare data for styling from the (potentially sorted) DataFrame
-    numeric_columns_for_styling = [col for col in columns_to_extract if col not in NON_STYLED_COLUMNS]
-    # Calculate thresholds based on the original, unsorted DataFrame to ensure consistency
-    # or on sorted_ratings_df if percentiles should reflect the current view's sort order (usually not desired for global percentiles).
-    # Using ratings.ratings.copy() ensures global percentiles.
-    thresholds = _calculate_percentile_thresholds(ratings.ratings.copy(), numeric_columns_for_styling) 
-
     initial_data_list_sorted = []
     for record in sorted_ratings_df.to_dict('records'): # Use the sorted DataFrame here
         initial_data_list_sorted.append({col: record.get(col) for col in columns_to_extract})
-
-    styled_sorted_ratings_data = _apply_styles_to_data(initial_data_list_sorted, thresholds, numeric_columns_for_styling)
+    
+    styled_sorted_ratings_data = _apply_styles_to_data(initial_data_list_sorted, STYLED_COLUMNS)
 
     context = {
         'ratings': styled_sorted_ratings_data,
@@ -211,49 +215,31 @@ def sort_ratings(request: HttpRequest):
     }
     return render(request, 'fantasy_nba/show_ratings.html', context)
 
-def _get_percentile_css_class(value, thresholds):
-    """Determines CSS class based on value and percentile thresholds."""
+def _get_value_based_css_class(value):
+    """Determines CSS class based on fixed value thresholds.
+    Assumes value is on a 0-100 scale where higher is better."""
     if value is None or not isinstance(value, (int, float)):
-        return None # Cannot style non-numeric or None values
-    
-    p10 = thresholds.get('p10')
-    p20 = thresholds.get('p20')
-    p80 = thresholds.get('p80')
-    p90 = thresholds.get('p90')
+        return None
 
-    if p90 is not None and value >= p90:
+    if value > 85:
+        return 'bg-dark-green'
+    elif value > 70:
         return 'bg-green'
-    if p80 is not None and value >= p80: # Implicitly < p90 if p90 was not None or this condition wouldn't be met
+    elif value > 55:
         return 'bg-light-green'
-    
-    if p10 is not None and value <= p10:
+    elif value < 15:
+        return 'bg-dark-red'
+    elif value < 30:
         return 'bg-red'
-    if p20 is not None and value <= p20: # Implicitly > p10 if p10 was not None or this condition wouldn't be met
+    elif value < 45:
         return 'bg-light-red'
+    elif value >= 45 and value <= 55:
+        return 'bg-grey'
         
-    return None # Default, no specific color for values in the middle range
+    return None
 
-def _calculate_percentile_thresholds(ratings_df: pd.DataFrame, numeric_columns: list):
-    """Calculates 10th, 20th, 80th, 90th percentiles for given numeric columns."""
-    percentile_thresholds = {}
-    for col_name in numeric_columns:
-        if col_name in ratings_df.columns and pd.api.types.is_numeric_dtype(ratings_df[col_name]):
-            # Ensure the column has data to prevent errors with quantile on empty series
-            if not ratings_df[col_name].dropna().empty:
-                quantiles = ratings_df[col_name].quantile([0.1, 0.2, 0.8, 0.9])
-                percentile_thresholds[col_name] = {
-                    'p10': quantiles.iloc[0] if not pd.isna(quantiles.iloc[0]) else None,
-                    'p20': quantiles.iloc[1] if not pd.isna(quantiles.iloc[1]) else None,
-                    'p80': quantiles.iloc[2] if not pd.isna(quantiles.iloc[2]) else None,
-                    'p90': quantiles.iloc[3] if not pd.isna(quantiles.iloc[3]) else None,
-                }
-            else: # Column is empty or all NaN
-                percentile_thresholds[col_name] = {} 
-        else: # Column not in DataFrame or not numeric
-            percentile_thresholds[col_name] = {} 
-    return percentile_thresholds
 
-def _apply_styles_to_data(data_list_of_dicts: list, percentile_thresholds: dict, columns_to_style: list):
+def _apply_styles_to_data(data_list_of_dicts: list, columns_to_style: list):
     """Wraps cell values with {'value': ..., 'css_class': ...} structure."""
     styled_data = []
     for player_row_dict in data_list_of_dicts:
@@ -261,9 +247,8 @@ def _apply_styles_to_data(data_list_of_dicts: list, percentile_thresholds: dict,
         for col_actual_name, value in player_row_dict.items():
             css_class = None
             if col_actual_name in columns_to_style:
-                thresholds_for_col = percentile_thresholds.get(col_actual_name, {})
-                if thresholds_for_col: # Check if thresholds were calculated
-                    css_class = _get_percentile_css_class(value, thresholds_for_col)
+                value_for_styling = value             
+                css_class = _get_value_based_css_class(value_for_styling)
             styled_player_row[col_actual_name] = {'value': value, 'css_class': css_class}
         styled_data.append(styled_player_row)
     return styled_data
