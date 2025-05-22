@@ -8,9 +8,21 @@
 <body>
     <nav>
         <ul>
+
+            {% if user.is_authenticated %}
+            <li><a href="#" onclick="document.getElementById('logout-form').submit();">Logout</a></li>
+            <form id="logout-form" method="post" action="{% url 'logout' %}" style="display: inline;">
+                {% csrf_token %}
+            </form>
+            {% else %}
+            <li><a href="{% url 'login_register' %}">Login</a></li>
+            {% endif %}
+            {% if user.is_authenticated %}
+            <li><a href="{% url 'team' %}">Team</a></li>
+            {% endif %}
             <li><a href="{% url 'show_ratings' %}">Ratings</a></li>
-            <li><a href="{% url 'punt' %}">Punt</a></li>
             <li><a href="{% url 'breakdown' %}">Breakdown</a></li>
+            <li><a href="{% url 'punt' %}">Settings</a></li>
         </ul>
     </nav>
 

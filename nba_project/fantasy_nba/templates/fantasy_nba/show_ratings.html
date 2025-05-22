@@ -7,7 +7,6 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Sortable Ratings</title>
 </head>
 <body>
     <h1 class="header-big">Ratings</h1>
@@ -24,9 +23,10 @@
                         </a>
                     </th>
                 {% endfor %}
+                <th></th>
             </tr>
         </thead>
-        <tbody id="ratings-table-body">
+                <tbody id="ratings-table-body">
             {% if ratings|length == 0 %}
                 <tr><td colspan="{{ column_display_names|length }}">No ratings available</td></tr>
             {% else %}
@@ -43,10 +43,9 @@
                                     {% endif %}
                                 </td>
                             {% else %}
-                                {# Fallback for unexpected data structure, or if a column is intentionally not wrapped #}
                                 <td>
                                     {% if column_actual_name == "Name" or column_actual_name == "Player_ID" or column_actual_name == "TEAM_ID" %}
-                                        {{ cell_content }} {# Assumes cell_content is the raw value #}
+                                        {{ cell_content }}
                                     {% else %}
                                         {{ cell_content|floatformat:2|default:"N/A" }}
                                     {% endif %}
@@ -54,10 +53,31 @@
                             {% endif %}
                         {% endwith %}
                     {% endfor %}
+                    <td>
+                        {% if user.is_authenticated %}
+                            <form method="post" action="{% url 'add_player' %}" style="display:inline;">
+                                {% csrf_token %}
+                                <input type="hidden" name="player_id" value="{{ row|get_item:'Player_ID' }}">
+                                <input type="hidden" name="player_name" value="{{ row|get_item:'Name' }}">
+                                <button type="submit">+</button>
+                            </form>
+                            <form method="post" action="{% url 'remove_player' %}" style="display:inline;">
+                                {% csrf_token %}
+                                <input type="hidden" name="player_id" value="{{ row|get_item:'Player_ID' }}">
+                                <button type="submit">-</button>
+                            </form>
+                            <form method="post" action="{% url 'toggle_availability' %}" style="display:inline;">
+                                {% csrf_token %}
+                                <input type="hidden" name="player_id" value="{{ row|get_item:'Player_ID' }}">
+                                <button type="submit">
+                                    {% if row.is_available %}Unavailable{% else %}Available{% endif %}
+                                </button>
+                            </form>
+                        {% endif %}
+                    </td>
                 </tr>
                 {% endfor %}
             {% endif %}
-            {# {% include 'fantasy_nba/ratings_table_rows.html' %} #} {# Commented out to prevent duplicate raw data #}
         </tbody>
     </table>
 </body>

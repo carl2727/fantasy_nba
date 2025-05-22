@@ -1,0 +1,16 @@
+{% extends 'fantasy_nba/base.html' %}
+{% load static %}
+{% load extras %}
+{% block content %}
+<div class="auth-container">
+    <form method="post" class="auth-form">
+        {% csrf_token %}
+        <h2>Create Team</h2>
+        <p>
+            <label for="name">Team Name:</label><br>
+            <input type="text" id="name" name="name" required>
+        </p>
+        <button type="submit">Create Team</button>
+    </form>
+</div>
+{% endblock %}

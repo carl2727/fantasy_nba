@@ -1,18 +1,48 @@
 
+:root {
+    --font-stack-system: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    --font-stack-helvetica: Helvetica, Sans-Serif;
+
+    --color-background-main: #f4f4f4;
+    --color-text-primary: #333;
+    --color-text-secondary: #1a1a1a;
+    --color-text-light: #ffffff;
+    --color-text-black: black;
+
+    --color-grey1: #DEDEDE;
+    --color-nav-border: #e0e0e0;
+    --color-nav-link: #4d4d4d;
+    --color-nav-link-hover: #636d7a;
+    --color-nav-link-hover-text: #ffffff;
+
+    --color-table-border: #ddd;
+    --color-table-header-bg: #9c9c9c;
+
+    --color-status-dark-green: #18ac18;
+    --color-status-green: #68ce68;
+    --color-status-light-green: #aae2aa;
+    --color-status-dark-red: #ff493c;
+    --color-status-red: #ff806a;
+    --color-status-light-red: #ffc5ab;
+    --color-status-grey-bg: #f0f0f0;
+
+    --color-content-bg: #fdfdfd;
+    --color-separator-light: #eee;
+}
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    font-family: var(--font-stack-system);
     margin: 0;
     padding: 0;
-    background-color: #f4f4f4;
-    color: #333;
+    background-color: var(--color-background-main);
+    color: var(--color-text-primary);
 }
 
 /* Navbar styles */
 nav {
-    background-color: #fffdf9e5;
+    background-color: var(--color-grey1);
     padding: 12px 20px;
-    border-bottom: 1px solid #e0e0e0;
+    border-bottom: 1px solid var(--color-nav-border);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
     text-align: center;
 }
@@ -27,11 +57,13 @@ nav ul {
 nav ul li {
     display: inline-block;
     margin: 0 20px;
+    font-weight:500;
+    font-size: 1.4em;
 }
 
 nav ul li a {
     text-decoration: none;
-    color: #4400ff;
+    color: var(--color-nav-link);
     padding: 10px 15px;
     border-radius: 4px;
     transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
@@ -39,8 +71,8 @@ nav ul li a {
 
 nav ul li a:hover,
 nav ul li a:focus {
-    background-color: #4400ff;
-    color: #ffffff;
+    background-color: var(--color-nav-link-hover);
+    color: var(--color-nav-link-hover-text);
 }
 
 .content {
@@ -56,15 +88,15 @@ nav ul li a:focus {
 }
 .styled-table th, 
 .styled-table td {
-    border: 1px solid #ddd;
+    border: 1px solid var(--color-table-border);
     padding: 10px 12px; /* Increased padding for better spacing */
     text-align: center;
     box-sizing: border-box;
 }
 .styled-table th {
-    background-color: #9c9c9c;
-    color: white; /* Added for better contrast on grey background */
-    max-width: 150px; /* Slightly increased max-width for headers */
+    background-color: var(--color-grey1);
+    color: var(--color-text-primary);
+    max-width: 150px;
     white-space: normal;
     overflow-wrap: break-word;
     word-wrap: break-word;
@@ -90,51 +122,50 @@ nav ul li a:focus {
 /* .styled-table tbody { display: table-row-group; } */
 
 .bg-dark-green {
-    background-color: #18ac18;
-
-    color: white;
+    background-color: var(--color-status-dark-green);
+    color: var(--color-text-light);
 }
 
 .bg-green {
-    background-color: #68ce68;
+    background-color: var(--color-status-green);
 
 }
 .bg-light-green {
-    background-color: #aae2aa;
+    background-color: var(--color-status-light-green);
 
 }
 
 .bg-dark-red {
-    background-color: #ff493c;
-    color: white;
+    background-color: var(--color-status-dark-red);
+    color: var(--color-text-light);
 }
 
 .bg-red {
-    background-color: #ff806a;
-    color: white;
+    background-color: var(--color-status-red);
+    color: var(--color-text-light);
 }
 .bg-light-red {
-    background-color: #ffc5ab;
+    background-color: var(--color-status-light-red);
 
 }
 .bg-grey {
-    background-color: #f0f0f0;
-    color: black;
+    background-color: var(--color-status-grey-bg);
+    color: var(--color-text-black);
 }
 
 .header-big {
-    font-family: Helvetica, Sans-Serif;
+    font-family: var(--font-stack-helvetica);
     font-size: 2rem;
     font-weight: bold;
     margin-bottom: 1rem;
     text-align: center;
-    color: #333;
+    color: var(--color-text-primary);
 }
 
 .project-explanation-content {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol"; /* Modern system font stack */
+    font-family: var(--font-stack-system); /* Modern system font stack */
     line-height: 1.7; /* Increased line height for better readability */
-    color: #333; /* Dark gray for text, easier on the eyes than pure black */
+    color: var(--color-text-primary); /* Dark gray for text, easier on the eyes than pure black */
     max-width: 800px; /* Limits line length, which aids reading */
     margin: 20px auto; /* Centers the content block and adds top/bottom margin */
     padding: 20px 30px; /* Padding inside the content block */
@@ -144,11 +175,11 @@ nav ul li a:focus {
 
 .project-explanation-content h2 {
     font-size: 1.8em; /* Larger heading size */
-    color: #1a1a1a; /* Very dark gray for headings */
+    color: var(--color-text-secondary); /* Very dark gray for headings */
     margin-top: 40px; /* More space above headings */
     margin-bottom: 20px; /* Space below headings, before paragraphs */
     padding-bottom: 10px; /* Space for the border */
-    border-bottom: 2px solid #eee; /* Subtle separator line for headings */
+    border-bottom: 2px solid var(--color-separator-light); /* Subtle separator line for headings */
 }
 
 .project-explanation-content h2:first-child {
@@ -164,3 +195,117 @@ nav ul li a:focus {
     uneven spacing ("rivers") between words in some browsers/text.
     */
 }
+
+/* Add this to your styles.css file */
+
+.form-wrapper {
+    max-width: 500px; /* Adjust this to control the width of the form container */
+    margin: 30px auto; /* This centers the div horizontally and adds some top/bottom margin */
+    padding: 25px;     /* Adds some spacing inside the wrapper, around the form */
+    text-align: center; /* Centers the button and the text within the form's paragraphs */
+    background-color: var(--color-content-bg, #fdfdfd); /* Optional: background color */
+    border: 1px solid var(--color-separator-light, #eee); /* Optional: border */
+    border-radius: 8px; /* Optional: rounded corners */
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05); /* Optional: subtle shadow for depth */
+}
+
+/* Optional: Adjust spacing for form elements generated by {{ form.as_p }} */
+.form-wrapper form p {
+    margin-bottom: 15px;
+}
+
+/* Optional: Style the submit button */
+.form-wrapper form button[type="submit"] {
+    padding: 10px 20px;
+    font-size: 1em;
+    /* You can use your color variables here, e.g.: */
+    /* background-color: var(--color-nav-link-hover-bg); */
+    /* color: var(--color-text-light); */
+    /* border: none; */
+    /* border-radius: 4px; */
+    cursor: pointer;
+}
+
+.auth-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 70vh;
+}
+.auth-form {
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 2px 16px rgba(0,0,0,0.07);
+    padding: 2rem 2.5rem;
+    margin: 1rem 0;
+    width: 100%;
+    max-width: 350px;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+.auth-form h2 {
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    text-align: center;
+}
+.auth-form input[type="text"],
+.auth-form input[type="password"] {
+    width: 100%;
+    padding: 0.6rem;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-size: 1rem;
+    background: #fafbfc;
+    transition: border 0.2s;
+}
+.auth-form input:focus {
+    border: 1.5px solid #007bff;
+    outline: none;
+}
+.auth-form button {
+    background: #007bff;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    padding: 0.7rem;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.auth-form button:hover {
+    background: #0056b3;
+}
+
+.auth-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 70vh; /* Optional: Centers vertically as well */
+}
+
+.auth-form {
+    width: 80%; /* Adjust as needed */
+    max-width: 400px; /* Maximum width */
+    margin: 10px auto; /* Auto margins for horizontal centering */
+    padding: 20px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
+.auth-form input[type="text"],
+.auth-form input[type="password"] {
+    width: 100%; /* Make sure the input fields take up the full width of their container */
+    box-sizing: border-box; /* Include padding and border in the element's total width and height */
+    padding: 0.6rem;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-size: 1rem;
+    background: #fafbfc;
+    transition: border 0.2s;
+}
+
+

@@ -1,0 +1,39 @@
+<!-- templates/registration/login_register.html -->
+{% extends 'fantasy_nba/base.html' %}
+{% load static %}
+{% load extras %}
+{% block content %}
+<div class="auth-container">
+    <form method="post" class="auth-form">
+        <h2>Login</h2>
+        {% csrf_token %}
+        <p>
+            <label for="{{ login_form.username.id_for_label }}">Username:</label><br>
+            {{ login_form.username }}
+        </p>
+        <p>
+            <label for="{{ login_form.password.id_for_label }}">Password:</label><br>
+            {{ login_form.password }}
+        </p>
+        <button type="submit" name="login">Login</button>
+    </form>
+
+    <form method="post" class="auth-form">
+        <h2>Register</h2>
+        {% csrf_token %}
+        <p>
+            <label for="{{ register_form.username.id_for_label }}">Username:</label><br>
+            {{ register_form.username }}
+        </p>
+        <p>
+            <label for="{{ register_form.password1.id_for_label }}">Password:</label><br>
+            {{ register_form.password1 }}
+        </p>
+        <p>
+            <label for="{{ register_form.password2.id_for_label }}">Confirm Password:</label><br>
+            {{ register_form.password2 }}
+        </p>
+        <button type="submit" name="register">Register</button>
+    </form>
+</div>
+{% endblock %}

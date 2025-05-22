@@ -1,8 +1,13 @@
 # views.py
 from django import forms
+from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
+from django.contrib.auth import login, authenticate, logout
+from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect
-from django.http import HttpRequest
+from django.http import HttpRequest, JsonResponse
 from . import ratings
+from .models import *
+from .forms import MinimalUserCreationForm
 import pandas as pd
 
 COLUMN_DISPLAY_NAMES = {
@@ -255,3 +260,74 @@ def _apply_styles_to_data(data_list_of_dicts: list, columns_to_style: list):
 
 def breakdown(request):
     return render(request, 'fantasy_nba/breakdown.html')
+
+def login_register(request):
+    login_form = AuthenticationForm()
+    register_form = MinimalUserCreationForm()  # Use your custom form
+
+    if request.method == 'POST':
+        if 'login' in request.POST:
+            login_form = AuthenticationForm(request, data=request.POST)
+            if login_form.is_valid():
+                user = login_form.get_user()
+                login(request, user)
+                return redirect('show_ratings')
+        elif 'register' in request.POST:
+            register_form = MinimalUserCreationForm(request.POST)  # Use your custom form
+            if register_form.is_valid():
+                user = register_form.save()
+                login(request, user)
+                return redirect('show_ratings')
+
+    return render(request, 'fantasy_nba/login_register.html', {
+        'login_form': login_form,
+        'register_form': register_form,
+    })
+    
+    
+@login_required
+def create_team(request):
+    if request.method == 'POST':
+        name = request.POST.get('name')
+        if name:
+            Team.objects.create(name=name, creator=request.user)
+            return redirect('team')
+    return render(request, 'fantasy_nba/create_team.html')
+
+@login_required
+def team(request):
+    team = Team.objects.filter(creator=request.user).first()
+    players = team.players.all() if team else []
+    return render(request, 'fantasy_nba/team.html', {'team': team, 'players': players})
+
+
+@login_required
+def add_player(request):
+    if request.method == 'POST':
+        team = Team.objects.get(creator=request.user)
+        player_id = request.POST.get('player_id')
+        player_name = request.POST.get('player_name')
+        TeamPlayer.objects.get_or_create(team=team, player_id=player_id, player_name=player_name)
+        return JsonResponse({'success': True})
+
+@login_required
+def remove_player(request):
+    if request.method == 'POST':
+        team = Team.objects.get(creator=request.user)
+        player_id = request.POST.get('player_id')
+        TeamPlayer.objects.filter(team=team, player_id=player_id).delete()
+        return JsonResponse({'success': True})
+
+@login_required
+def toggle_availability(request):
+    if request.method == 'POST':
+        team = Team.objects.get(creator=request.user)
+        player_id = request.POST.get('player_id')
+        tp = TeamPlayer.objects.get(team=team, player_id=player_id)
+        tp.is_available = not tp.is_available
+        tp.save()
+        return JsonResponse({'success': True, 'is_available': tp.is_available})
+
+def logout_view(request):
+    logout(request)
+    return redirect('show_ratings')

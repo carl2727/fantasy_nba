@@ -1,13 +1,15 @@
 {% extends 'fantasy_nba/base.html' %}
 {% load extras %}
 {% block content %}
-    <h1>Punt Ratings</h1>
+    <h1 class="header-big">Punt Categories</h1>
 
-    <form method="post">
-        {% csrf_token %}
-        {{ form.as_p }}
-        <button type="submit">Show Punt Ratings</button>
-    </form>
+    <div class="form-wrapper">
+        <form method="post">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <button type="submit">Show Punt Ratings</button>
+        </form>
+    </div>
 
     {% if punted_categories %}
         <h2>Punting: {% for cat in punted_categories %}{{ cat }}{% if not forloop.last %}, {% endif %}{% endfor %}</h2>
