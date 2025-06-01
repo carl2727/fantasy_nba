@@ -125,3 +125,40 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple', # You can use 'verbose' for more detail
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO', # Set to 'DEBUG' for even more detailed Django logs
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'),
+            'propagate': False, # Don't send Django's logs to the root logger as well
+        },
+        'fantasy_nba': { # Your app's specific logger
+            'handlers': ['console'],
+            'level': 'DEBUG', # Capture all debug messages from your app
+            'propagate': True, # Allow messages to also go to the root logger if needed
+        },
+    },
+}

@@ -1,4 +1,4 @@
-<!-- show_ratings.html  -->
+<!-- templates/fantasy_nba/show_ratings.html -->
 {% extends 'fantasy_nba/base.html' %}
 {% load static %}
 {% load extras %}
@@ -23,12 +23,18 @@
                         </a>
                     </th>
                 {% endfor %}
-                <th></th>
+                <th>
+                    {% if active_team %}
+                        Actions <!-- Changed from active_team.name for clarity -->
+                    {% else %}
+                        Tools
+                    {% endif %}
+                </th>
             </tr>
         </thead>
-                <tbody id="ratings-table-body">
+        <tbody id="ratings-table-body">
             {% if ratings|length == 0 %}
-                <tr><td colspan="{{ column_display_names|length }}">No ratings available</td></tr>
+                <tr><td colspan="{{ column_display_names|length|add:1 }}">No ratings available</td></tr> <!-- Adjusted colspan -->
             {% else %}
                 {% for row in ratings %}
                 <tr>
@@ -36,7 +42,7 @@
                         {% with cell_content=row|get_item:column_actual_name %}
                             {% if cell_content|is_styled_cell %}
                                 <td class="{{ cell_content.css_class|default:'' }}">
-                                    {% if column_actual_name == "Name" or column_actual_name == "Player_ID" or column_actual_name == "TEAM_ID" %}
+                                    {% if column_actual_name == "Name" or column_actual_name == "Player_ID" or column_actual_name == "TEAM_ID" or column_actual_name == "Status" %}
                                         {{ cell_content.value }}
                                     {% else %}
                                         {{ cell_content.value|floatformat:2|default:"N/A" }}
@@ -44,7 +50,7 @@
                                 </td>
                             {% else %}
                                 <td>
-                                    {% if column_actual_name == "Name" or column_actual_name == "Player_ID" or column_actual_name == "TEAM_ID" %}
+                                    {% if column_actual_name == "Name" or column_actual_name == "Player_ID" or column_actual_name == "TEAM_ID" or column_actual_name == "Status" %}
                                         {{ cell_content }}
                                     {% else %}
                                         {{ cell_content|floatformat:2|default:"N/A" }}
@@ -54,25 +60,30 @@
                         {% endwith %}
                     {% endfor %}
                     <td>
-                        {% if user.is_authenticated %}
-                            <form method="post" action="{% url 'add_player' %}" style="display:inline;">
+                        {% if user.is_authenticated and active_team %}
+                            <!-- Button to set status to ON_TEAM -->
+                            <form method="post" action="{% url 'update_player_status' %}" style="display:inline;">
                                 {% csrf_token %}
-                                <input type="hidden" name="player_id" value="{{ row|get_item:'Player_ID' }}">
-                                <input type="hidden" name="player_name" value="{{ row|get_item:'Name' }}">
-                                <button type="submit">+</button>
+                                <input type="hidden" name="player_id" value="{{ row|get_item:'Player_ID'|get_item:'value'|default_if_none:'' }}">
+                                <input type="hidden" name="status" value="ON_TEAM">
+                                <button type="submit" title="Add to Team">+</button>
                             </form>
-                            <form method="post" action="{% url 'remove_player' %}" style="display:inline;">
+                            <!-- Button to set status to AVAILABLE -->
+                            <form method="post" action="{% url 'update_player_status' %}" style="display:inline;">
                                 {% csrf_token %}
-                                <input type="hidden" name="player_id" value="{{ row|get_item:'Player_ID' }}">
-                                <button type="submit">-</button>
+                                <input type="hidden" name="player_id" value="{{ row|get_item:'Player_ID'|get_item:'value'|default_if_none:'' }}">
+                                <input type="hidden" name="status" value="AVAILABLE">
+                                <button type="submit" title="Make Available">-</button>
                             </form>
-                            <form method="post" action="{% url 'toggle_availability' %}" style="display:inline;">
+                            <!-- Button to set status to UNAVAILABLE -->
+                            <form method="post" action="{% url 'update_player_status' %}" style="display:inline;">
                                 {% csrf_token %}
-                                <input type="hidden" name="player_id" value="{{ row|get_item:'Player_ID' }}">
-                                <button type="submit">
-                                    {% if row.is_available %}Unavailable{% else %}Available{% endif %}
-                                </button>
+                                <input type="hidden" name="player_id" value="{{ row|get_item:'Player_ID'|get_item:'value'|default_if_none:'' }}">
+                                <input type="hidden" name="status" value="UNAVAILABLE">
+                                <button type="submit" title="Make Unavailable">/</button>
                             </form>
+                        {% else %}
+                            <!-- Optional: Message if no active team or user not authenticated -->
                         {% endif %}
                     </td>
                 </tr>
@@ -80,6 +91,7 @@
             {% endif %}
         </tbody>
     </table>
+
+    
 </body>
-</html>
 {% endblock %}

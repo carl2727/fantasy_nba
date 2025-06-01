@@ -16,9 +16,24 @@ game_stats = pd.read_csv(game_stats_file)
 players = pd.read_csv(players_file)
 
 # Preprocess data
-game_stats.drop(columns=['Game_ID', 'FG_PCT', 'FG3_PCT', 'FT_PCT', 'VIDEO_AVAILABLE'], inplace=True)
+# Ensure Player_ID is numeric, coercing errors to NaN.
+# Then drop rows where Player_ID could not be converted (is NaN).
+# Finally, convert the valid Player_IDs to integers.
+game_stats['Player_ID'] = pd.to_numeric(game_stats['Player_ID'], errors='coerce')
+game_stats.dropna(subset=['Player_ID'], inplace=True)
+game_stats['Player_ID'] = game_stats['Player_ID'].astype(int)
+
+# Clean PERSON_ID in the players DataFrame
+players['PERSON_ID'] = pd.to_numeric(players['PERSON_ID'], errors='coerce')
+players.dropna(subset=['PERSON_ID'], inplace=True)
+players['PERSON_ID'] = players['PERSON_ID'].astype(int)
+
+# Drop unnecessary columns, ignoring errors if some are already missing
+columns_to_drop_from_game_stats = ['Game_ID', 'FG_PCT', 'FG3_PCT', 'FT_PCT', 'VIDEO_AVAILABLE']
+game_stats.drop(columns=[col for col in columns_to_drop_from_game_stats if col in game_stats.columns], inplace=True)
+
 numeric_columns = game_stats.select_dtypes(include='number').columns
-game_stats = game_stats.groupby('Player_ID', as_index=False)[numeric_columns].mean().reset_index()
+game_stats = game_stats.groupby('Player_ID', as_index=False)[numeric_columns].mean() # .reset_index() is redundant with as_index=False
 player_availability_score = calculate_player_availability_score()
 
 stats = pd.merge(
@@ -30,7 +45,8 @@ stats = pd.merge(
 )
 
 stats.rename(columns={'DISPLAY_FIRST_LAST': 'Name'}, inplace=True)
-stats.drop(columns=['PERSON_ID'])
+if 'PERSON_ID' in stats.columns: # Drop PERSON_ID only if it exists after the merge
+    stats.drop(columns=['PERSON_ID'], inplace=True)
 
 def calc_fgn_ftn(stats):
     stats['FGPM'] = stats['FGM'] - (stats['FGA'] - stats['FGM'])

@@ -1,9 +1,31 @@
+<!-- templates/fantasy_nba/team.html -->
 {% extends 'fantasy_nba/base.html' %}
 {% load static %}
 {% load extras %}
 {% block content %}
+
 <div class="auth-container">
+    <h2>Select Active Team</h2>
     <form method="post" class="auth-form">
+        {% csrf_token %}
+        <ul>
+            {% for team in teams %}
+                <li>
+                    <label>
+                        <input type="radio" name="team_id" value="{{ team.team_id }}" {% if team.is_active %}checked{% endif %}>
+                        {{ team.name }}
+                    </label>
+                </li>
+            {% empty %}
+                <li>You have not created any teams yet.</li>
+            {% endfor %}
+        </ul>
+        <button type="submit">Select Active Team</button>
+    </form>
+</div>
+
+<div class="auth-container">
+    <form method="post" action="{% url 'create_team' %}" class="auth-form">
         {% csrf_token %}
         <h2>Create Team</h2>
         <p>
@@ -13,4 +35,5 @@
         <button type="submit">Create Team</button>
     </form>
 </div>
+
 {% endblock %}
