@@ -5,6 +5,11 @@
 {% load fantasy_nba_tags %}
 {% block content %}
 <!DOCTYPE html>
+<style>
+    .column-hidden-player-id {
+        display: none !important; /* !important to help ensure it overrides other styles if necessary */
+    }
+</style>
 <html>
 <head>
 </head>
@@ -15,7 +20,7 @@
         <thead>
             <tr>
                 {% for column_key, display_name in column_display_names.items %}
-                    <th>
+                    <th class="{% if column_key == 'Player_ID' %}column-hidden-player-id{% endif %}">
                         <a href="{% url 'sort_ratings' %}?sort_by={{ column_key }}">
                             {{ display_name }}
                             {% if sort_by == column_key and sort_direction == 'asc' %} ▲{% endif %}
@@ -34,14 +39,16 @@
         </thead>
         <tbody id="ratings-table-body">
             {% if ratings|length == 0 %}
-                <tr><td colspan="{{ column_display_names|length|add:1 }}">No ratings available</td></tr> <!-- Adjusted colspan -->
+                <tr><td colspan="{{ column_display_names|length }}">No ratings available</td></tr> <!-- Adjusted colspan since Player_ID is hidden but still in column_display_names, and Actions column is separate -->
             {% else %}
                 {% for row in ratings %}
-                <tr>
+                {% with player_id_val=row|get_item:'Player_ID'|get_item:'value'|default_if_none:'' %}
+                <tr data-player-id="{{ player_id_val }}">
                     {% for column_actual_name, column_display_name_val in column_display_names.items %}
                         {% with cell_content=row|get_item:column_actual_name %}
+                            <td class="{% if cell_content|is_styled_cell %}{{ cell_content.css_class|default:'' }}{% endif %}{% if column_actual_name == 'Status' %} player-status-cell{% endif %}{% if column_actual_name == 'Player_ID' %} column-hidden-player-id{% endif %}">
                             {% if cell_content|is_styled_cell %}
-                                <td class="{{ cell_content.css_class|default:'' }}">
+                                {# <td class="{{ cell_content.css_class|default:'' }} {% if column_actual_name == 'Status' %}player-status-cell{% endif %}"> #}
                                     {% if column_actual_name == "Name" or column_actual_name == "Player_ID" or column_actual_name == "TEAM_ID" or column_actual_name == "Status" %}
                                         {{ cell_content.value }}
                                     {% else %}
@@ -49,9 +56,9 @@
                                     {% endif %}
                                 </td>
                             {% else %}
-                                <td>
+                                {# <td {% if column_actual_name == 'Status' %}class="player-status-cell"{% endif %}> #}
                                     {% if column_actual_name == "Name" or column_actual_name == "Player_ID" or column_actual_name == "TEAM_ID" or column_actual_name == "Status" %}
-                                        {{ cell_content }}
+                                        {{ cell_content }} {# This will now be inside the TD with player-status-cell if it's the Status column #}
                                     {% else %}
                                         {{ cell_content|floatformat:2|default:"N/A" }}
                                     {% endif %}
@@ -60,25 +67,26 @@
                         {% endwith %}
                     {% endfor %}
                     <td>
+                        {# Add a class to the forms for easier selection in JS #}
                         {% if user.is_authenticated and active_team %}
                             <!-- Button to set status to ON_TEAM -->
-                            <form method="post" action="{% url 'update_player_status' %}" style="display:inline;">
+                            <form method="post" action="{% url 'update_player_status' %}" class="update-status-form" style="display:inline;">
                                 {% csrf_token %}
-                                <input type="hidden" name="player_id" value="{{ row|get_item:'Player_ID'|get_item:'value'|default_if_none:'' }}">
+                                <input type="hidden" name="player_id" value="{{ player_id_val }}">
                                 <input type="hidden" name="status" value="ON_TEAM">
                                 <button type="submit" title="Add to Team">+</button>
                             </form>
                             <!-- Button to set status to AVAILABLE -->
-                            <form method="post" action="{% url 'update_player_status' %}" style="display:inline;">
+                            <form method="post" action="{% url 'update_player_status' %}" class="update-status-form" style="display:inline;">
                                 {% csrf_token %}
-                                <input type="hidden" name="player_id" value="{{ row|get_item:'Player_ID'|get_item:'value'|default_if_none:'' }}">
+                                <input type="hidden" name="player_id" value="{{ player_id_val }}">
                                 <input type="hidden" name="status" value="AVAILABLE">
                                 <button type="submit" title="Make Available">-</button>
                             </form>
                             <!-- Button to set status to UNAVAILABLE -->
-                            <form method="post" action="{% url 'update_player_status' %}" style="display:inline;">
+                            <form method="post" action="{% url 'update_player_status' %}" class="update-status-form" style="display:inline;">
                                 {% csrf_token %}
-                                <input type="hidden" name="player_id" value="{{ row|get_item:'Player_ID'|get_item:'value'|default_if_none:'' }}">
+                                <input type="hidden" name="player_id" value="{{ player_id_val }}">
                                 <input type="hidden" name="status" value="UNAVAILABLE">
                                 <button type="submit" title="Make Unavailable">/</button>
                             </form>
@@ -87,6 +95,7 @@
                         {% endif %}
                     </td>
                 </tr>
+                {% endwith %}
                 {% endfor %}
             {% endif %}
         </tbody>
@@ -94,4 +103,76 @@
 
     
 </body>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const forms = document.querySelectorAll('.update-status-form');
+
+            forms.forEach(form => {
+                form.addEventListener('submit', function (event) {
+                    event.preventDefault(); // Prevent default page reload
+
+                    const formData = new FormData(form);
+                    const playerId = formData.get('player_id');
+                    const newStatusValue = formData.get('status'); // This is 'ON_TEAM', 'AVAILABLE', etc.
+                    const url = form.action;
+                    const csrfToken = form.querySelector('[name=csrfmiddlewaretoken]').value;
+
+                    fetch(url, {
+                        method: 'POST',
+                        body: formData, // FormData handles content type for you
+                        headers: {
+                            // 'X-CSRFToken': csrfToken, // FormData sends it, but good to be aware
+                            // For non-FormData POSTs, you'd need:
+                            // 'Content-Type': 'application/x-www-form-urlencoded',
+                        }
+                    })
+                    .then(response => {
+                        if (!response.ok) {
+                            // Try to get error message from server if available
+                            return response.json().then(errData => {
+                                throw new Error(errData.error || `Server error: ${response.status}`);
+                            }).catch(() => {
+                                // Fallback if error response is not JSON
+                                throw new Error(`Server error: ${response.status}`);
+                            });
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        if (data.success) {
+                            // Find the player's row using the data-player-id attribute
+                            const playerRow = document.querySelector(`tr[data-player-id="${playerId}"]`);
+                            if (playerRow) {
+                                // Find the status cell within that row
+                                const statusCell = playerRow.querySelector('.player-status-cell');
+                                if (statusCell) {
+                                    // Update the cell content with the display name of the new status
+                                    statusCell.textContent = data.new_status_display;
+                                    // You could also add a temporary success class for visual feedback
+                                    // statusCell.classList.add('status-updated');
+                                    // setTimeout(() => {
+                                    //     statusCell.classList.remove('status-updated');
+                                    // }, 1500);
+                                } else {
+                                    console.error('Status cell not found for player:', playerId);
+                                }
+                            } else {
+                                console.error('Player row not found for player:', playerId);
+                            }
+                            // Optionally, display data.message to the user (e.g., in a toast notification)
+                            // console.log(data.message);
+                        } else {
+                            // Handle failure (e.g., display data.error)
+                            alert('Error updating status: ' + (data.error || 'Unknown error'));
+                            console.error('Error updating status:', data.error);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Fetch error:', error);
+                        alert('An error occurred: ' + error.message);
+                    });
+                });
+            });
+        });
+    </script>
 {% endblock %}
