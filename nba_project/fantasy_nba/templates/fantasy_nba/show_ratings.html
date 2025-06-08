@@ -39,59 +39,52 @@
         </thead>
         <tbody id="ratings-table-body">
             {% if ratings|length == 0 %}
-                <tr><td colspan="{{ column_display_names|length }}">No ratings available</td></tr> <!-- Adjusted colspan since Player_ID is hidden but still in column_display_names, and Actions column is separate -->
+                <tr><td colspan="{{ column_display_names|length|add:'1' }}">No ratings available</td></tr>
             {% else %}
                 {% for row in ratings %}
                 {% with player_id_val=row|get_item:'Player_ID'|get_item:'value'|default_if_none:'' %}
                 <tr data-player-id="{{ player_id_val }}">
                     {% for column_actual_name, column_display_name_val in column_display_names.items %}
-                        {% with cell_content=row|get_item:column_actual_name %}
-                            <td class="{% if cell_content|is_styled_cell %}{{ cell_content.css_class|default:'' }}{% endif %}{% if column_actual_name == 'Status' %} player-status-cell{% endif %}{% if column_actual_name == 'Player_ID' %} column-hidden-player-id{% endif %}">
-                            {% if cell_content|is_styled_cell %}
-                                {# <td class="{{ cell_content.css_class|default:'' }} {% if column_actual_name == 'Status' %}player-status-cell{% endif %}"> #}
-                                    {% if column_actual_name == "Name" or column_actual_name == "Player_ID" or column_actual_name == "TEAM_ID" or column_actual_name == "Status" %}
-                                        {{ cell_content.value }}
-                                    {% else %}
-                                        {{ cell_content.value|floatformat:2|default:"N/A" }}
-                                    {% endif %}
-                                </td>
-                            {% else %}
-                                {# <td {% if column_actual_name == 'Status' %}class="player-status-cell"{% endif %}> #}
-                                    {% if column_actual_name == "Name" or column_actual_name == "Player_ID" or column_actual_name == "TEAM_ID" or column_actual_name == "Status" %}
-                                        {{ cell_content }} {# This will now be inside the TD with player-status-cell if it's the Status column #}
-                                    {% else %}
-                                        {{ cell_content|floatformat:2|default:"N/A" }}
-                                    {% endif %}
-                                </td>
-                            {% endif %}
+                        {% with cell_data=row|get_item:column_actual_name %} {# Each cell_data is {'value': ..., 'css_class': ...} #}
+                            <td data-column-key="{{ column_actual_name }}" class="{% if cell_data.css_class %}{{ cell_data.css_class }}{% endif %}{% if column_actual_name == 'Status' %} player-status-cell{% endif %}{% if column_actual_name == 'Player_ID' %} column-hidden-player-id{% endif %}">
+                                {% if column_actual_name == "Name" or column_actual_name == "Player_ID" or column_actual_name == "TEAM_ID" or column_actual_name == "Status" %}
+                                    {{ cell_data.value }}
+                                {% else %}
+                                    {{ cell_data.value|floatformat:2|default:"N/A" }}
+                                {% endif %}
+                            </td>
                         {% endwith %}
                     {% endfor %}
                     <td>
-                        {# Add a class to the forms for easier selection in JS #}
-                        {% if user.is_authenticated and active_team %}
-                            <!-- Button to set status to ON_TEAM -->
-                            <form method="post" action="{% url 'update_player_status' %}" class="update-status-form" style="display:inline;">
-                                {% csrf_token %}
-                                <input type="hidden" name="player_id" value="{{ player_id_val }}">
-                                <input type="hidden" name="status" value="ON_TEAM">
-                                <button type="submit" title="Add to Team">+</button>
-                            </form>
-                            <!-- Button to set status to AVAILABLE -->
-                            <form method="post" action="{% url 'update_player_status' %}" class="update-status-form" style="display:inline;">
-                                {% csrf_token %}
-                                <input type="hidden" name="player_id" value="{{ player_id_val }}">
-                                <input type="hidden" name="status" value="AVAILABLE">
-                                <button type="submit" title="Make Available">-</button>
-                            </form>
-                            <!-- Button to set status to UNAVAILABLE -->
-                            <form method="post" action="{% url 'update_player_status' %}" class="update-status-form" style="display:inline;">
-                                {% csrf_token %}
-                                <input type="hidden" name="player_id" value="{{ player_id_val }}">
-                                <input type="hidden" name="status" value="UNAVAILABLE">
-                                <button type="submit" title="Make Unavailable">/</button>
-                            </form>
+                        {% if player_id_val == 'TEAM_AVERAGE_ROW' %}
+                            N/A {# No actions for the team average row #}
                         {% else %}
-                            <!-- Optional: Message if no active team or user not authenticated -->
+                            {# Add a class to the forms for easier selection in JS #}
+                            {% if user.is_authenticated and active_team %}
+                                <!-- Button to set status to ON_TEAM -->
+                                <form method="post" action="{% url 'update_player_status' %}" class="update-status-form" style="display:inline;">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="player_id" value="{{ player_id_val }}">
+                                    <input type="hidden" name="status" value="ON_TEAM">
+                                    <button type="submit" title="Add to Team">+</button>
+                                </form>
+                                <!-- Button to set status to AVAILABLE -->
+                                <form method="post" action="{% url 'update_player_status' %}" class="update-status-form" style="display:inline;">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="player_id" value="{{ player_id_val }}">
+                                    <input type="hidden" name="status" value="AVAILABLE">
+                                    <button type="submit" title="Make Available">-</button>
+                                </form>
+                                <!-- Button to set status to UNAVAILABLE -->
+                                <form method="post" action="{% url 'update_player_status' %}" class="update-status-form" style="display:inline;">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="player_id" value="{{ player_id_val }}">
+                                    <input type="hidden" name="status" value="UNAVAILABLE">
+                                    <button type="submit" title="Make Unavailable">/</button>
+                                </form>
+                            {% else %}
+                                <!-- Optional: Message if no active team or user not authenticated -->
+                            {% endif %}
                         {% endif %}
                     </td>
                 </tr>
@@ -158,6 +151,57 @@
                                 }
                             } else {
                                 console.error('Player row not found for player:', playerId);
+                            }
+
+                            // Update Team Averages Row if data is present
+                            if (typeof data.num_players_on_team !== 'undefined') {
+                                const teamAvgRow = document.querySelector('tr[data-player-id="TEAM_AVERAGE_ROW"]');
+                                if (teamAvgRow) {
+                                    // Update Status cell in Team Average Row
+                                    const statusCellInAvgRow = teamAvgRow.querySelector('td[data-column-key="Status"]');
+                                    if (statusCellInAvgRow) {
+                                        if (data.num_players_on_team > 0) {
+                                            statusCellInAvgRow.textContent = `Team Avg (${data.num_players_on_team} Player${data.num_players_on_team !== 1 ? 's' : ''})`;
+                                        } else {
+                                            statusCellInAvgRow.textContent = 'Team Avg (0 Players)';
+                                        }
+                                    }
+
+                                    // Update individual stat cells in Team Average Row
+                                    if (data.team_averages_data) { // This is the dict of styled averages
+                                        for (const col_key in data.team_averages_data) {
+                                            const avg_cell_value_obj = data.team_averages_data[col_key]; // {'value': X, 'css_class': Y}
+                                            const targetCell = teamAvgRow.querySelector(`td[data-column-key="${col_key}"]`);
+                                            if (targetCell) {
+                                                let preservedClasses = '';
+                                                if (targetCell.classList.contains('column-hidden-player-id')) {
+                                                    preservedClasses = 'column-hidden-player-id';
+                                                }
+                                                targetCell.className = preservedClasses; // Reset data-driven classes, keep structural ones
+
+                                                if (avg_cell_value_obj.value !== null && typeof avg_cell_value_obj.value !== 'undefined') {
+                                                    targetCell.textContent = parseFloat(avg_cell_value_obj.value).toFixed(2);
+                                                } else {
+                                                    targetCell.textContent = "N/A";
+                                                }
+                                                if (avg_cell_value_obj.css_class) {
+                                                    targetCell.classList.add(avg_cell_value_obj.css_class);
+                                                }
+                                            }
+                                        }
+                                    } else { // num_players_on_team is 0, team_averages_data is null
+                                        // Clear out stat cells to N/A
+                                        teamAvgRow.querySelectorAll('td').forEach(cell => {
+                                            const cellColKey = cell.getAttribute('data-column-key');
+                                            if (cellColKey && !['Name', 'Player_ID', 'Status'].includes(cellColKey)) {
+                                                let preservedClasses = ''; // e.g. column-hidden-player-id if it were a stat cell
+                                                // For stat cells, usually no special structural classes other than what data-column-key implies
+                                                cell.className = preservedClasses;
+                                                cell.textContent = 'N/A';
+                                            }
+                                        });
+                                    }
+                                }
                             }
                             // Optionally, display data.message to the user (e.g., in a toast notification)
                             // console.log(data.message);

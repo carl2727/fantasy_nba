@@ -45,11 +45,59 @@ STYLED_COLUMNS = [
 
 
 def _get_default_columns():
-    """Returns the default list of columns to display."""
-
+    """Returns a default list of column keys for display."""
+    # This function's direct operational use in show_ratings is limited
+    # as columns_to_extract is dynamically built.
+    # Providing a sensible default list of keys.
+    return [
+        'Name', 'PTS_RT', 'REB_RT', 'AST_RT', 'FGN_RT', 'FTN_RT',
+        'FG3M_RT', 'BLK_RT', 'STL_RT', 'TOV_RT',
+        'Total_Rating', 'Total_Available_Rating'
+    ]
+    
 RATING_CHOICES = [
     (key, COLUMN_DISPLAY_NAMES[key].replace('_RT', '')) for key in COLUMN_DISPLAY_NAMES if key not in ['Name', 'Total_Rating', 'Total_Available_Rating']
 ]
+
+def _get_final_column_display_names(session_data, all_rating_columns):
+    """
+    Determines the final set of column display names, including punt-specific columns.
+    `all_rating_columns` is a list/Index of columns available in the base ratings DataFrame.
+    """
+    final_names = COLUMN_DISPLAY_NAMES.copy()
+
+    punted_categories = session_data.get('punted_categories', [])
+
+    if punted_categories:
+        punt_suffix = "_Punt_" + "_".join(sorted([cat.replace('_RT', '') for cat in punted_categories]))
+        punt_perf_col_actual_name_candidate = f'Total{punt_suffix}_Available_Rating'
+        punt_overall_col_actual_name_candidate = f'Total{punt_suffix}_Rating'
+
+        punted_display_names_list = [COLUMN_DISPLAY_NAMES[cat].replace('_RT', '') for cat in punted_categories]
+        punted_cats_formatted_for_display = ""
+        if len(punted_display_names_list) == 1:
+            punted_cats_formatted_for_display = punted_display_names_list[0]
+        elif len(punted_display_names_list) == 2:
+            punted_cats_formatted_for_display = f"{punted_display_names_list[0]} & {punted_display_names_list[1]}"
+        else: # Fallback
+            punted_cats_formatted_for_display = ", ".join(punted_display_names_list)
+
+        if punt_perf_col_actual_name_candidate in all_rating_columns:
+            final_names[punt_perf_col_actual_name_candidate] = f"Performance Rating (Punt {punted_cats_formatted_for_display})"
+
+        if punt_overall_col_actual_name_candidate in all_rating_columns:
+            final_names[punt_overall_col_actual_name_candidate] = f"Overall Rating (Punt {punted_cats_formatted_for_display})"
+
+    final_names['Status'] = 'Status'
+    return final_names
+
+def _extract_columns_for_display(final_column_display_names_map, all_rating_columns):
+    """
+    From the final_column_display_names_map, returns a list of actual column keys
+    that exist in all_rating_columns or are special keys like 'Name', 'Player_ID', 'Status'.
+    This ensures we only try to extract/display columns that can be sourced.
+    """
+    return [key for key in final_column_display_names_map.keys() if key in all_rating_columns or key in ['Name', 'Player_ID', 'Status']]
 
 class PuntForm(forms.Form):
     punt_category_1 = forms.ChoiceField(
@@ -82,73 +130,28 @@ def punt(request: HttpRequest):
 
 def show_ratings(request: HttpRequest):
     ratings_df = ratings_data_module.ratings.copy()
-    # Base columns to display, order is preserved by list()
-    columns_to_extract = list(COLUMN_DISPLAY_NAMES.keys()) 
-    
-    # Initialize variables for punt-specific columns
-    punt_perf_col_actual_name = None
-    punt_perf_col_display_name = None
-    punt_overall_col_actual_name = None
-    punt_overall_col_display_name = None
-
-    punted_categories = request.session.get('punted_categories', [])
-    if punted_categories:
-        # Generate the common part of the punt column name (e.g., "_Punt_AST_STL")
-        punt_suffix = "_Punt_" + "_".join(sorted([cat.replace('_RT', '') for cat in punted_categories]))
-        
-        # Define the actual data column name for "Performance (Punt...)"
-        punt_perf_col_actual_name_candidate = f'Total{punt_suffix}_Available_Rating'
-        # Define the actual data column name for "Overall (Punt...)"
-        punt_overall_col_actual_name_candidate = f'Total{punt_suffix}_Rating'
-
-        # Prepare formatted string for punted categories display
-        punted_display_names_list = [COLUMN_DISPLAY_NAMES[cat].replace('_RT', '') for cat in punted_categories]
-        if len(punted_display_names_list) == 1:
-            punted_cats_formatted_for_display = punted_display_names_list[0]
-        elif len(punted_display_names_list) == 2:
-            punted_cats_formatted_for_display = f"{punted_display_names_list[0]} & {punted_display_names_list[1]}"
-        else: # Fallback, though typically 1 or 2 categories are punted
-            punted_cats_formatted_for_display = ", ".join(punted_display_names_list)
-
-        # Check and prepare "Performance (Punt...)" column (already existing logic)
-        if punt_perf_col_actual_name_candidate in ratings_data_module.ratings.columns:
-            punt_perf_col_actual_name = punt_perf_col_actual_name_candidate
-            punt_perf_col_display_name = f"Performance Rating (Punt {punted_cats_formatted_for_display})"
-            if punt_perf_col_actual_name not in columns_to_extract:
-                columns_to_extract.append(punt_perf_col_actual_name)
-
-        # Check and prepare "Overall (Punt...)" column (newly added)
-        if punt_overall_col_actual_name_candidate in ratings_data_module.ratings.columns:
-            punt_overall_col_actual_name = punt_overall_col_actual_name_candidate
-            punt_overall_col_display_name = f"Overall Rating (Punt {punted_cats_formatted_for_display})"
-            if punt_overall_col_actual_name not in columns_to_extract:
-                columns_to_extract.append(punt_overall_col_actual_name)
-
-    # Start with base display names and add punt-specific ones
-    final_column_display_names = COLUMN_DISPLAY_NAMES.copy()
-    if punt_perf_col_actual_name and punt_perf_col_display_name:
-        final_column_display_names[punt_perf_col_actual_name] = punt_perf_col_display_name
-    
-    if punt_overall_col_actual_name and punt_overall_col_display_name:
-        final_column_display_names[punt_overall_col_actual_name] = punt_overall_col_display_name
-    
-    final_column_display_names['Status'] = 'Status' # Add Status column
+    final_column_display_names = _get_final_column_display_names(request.session, ratings_data_module.ratings.columns)
+    # columns_to_extract is implicitly handled by iterating final_column_display_names.keys()
+    # and checking existence in `record` during data preparation.
 
     # Get the active team for the user
     user_teams = None
     active_team = None  # Initialize active_team to None
+    active_team_player_ids = set()
+    team_player_statuses_map = {}
+    on_team_player_ids = set() # Player IDs for those with status 'ON_TEAM'
+
     if request.user.is_authenticated:
         # Query all teams for the user first
         user_teams = Team.objects.filter(creator=request.user)
         active_team = user_teams.filter(is_active=True).first()
         if active_team:
             # Fetch all player statuses for the active team efficiently
-            team_player_entries = TeamPlayer.objects.filter(team=active_team)
-            active_team_player_ids = set(tp.player_id for tp in team_player_entries) # Used for 'is_on_team'
+            team_player_entries = TeamPlayer.objects.filter(team=active_team).select_related('team')
+            active_team_player_ids = set(tp.player_id for tp in team_player_entries) # All players associated with the team
             team_player_statuses_map = {tp.player_id: tp.status for tp in team_player_entries}
-        else:
-            active_team_player_ids = set()
-            team_player_statuses_map = {}
+            on_team_player_ids = set(tp.player_id for tp in team_player_entries if tp.status == 'ON_TEAM')
+
 
     # Prepare data for styling
     initial_data_list = []
@@ -190,13 +193,87 @@ def show_ratings(request: HttpRequest):
     # The _apply_styles_to_data function will wrap each value, including 'Status'
     styled_ratings_data = _apply_styles_to_data(initial_data_list, STYLED_COLUMNS)
 
+    # Get styled team averages and count using the new helper
+    (styled_team_averages_dict, num_players_on_team_calc) = _get_styled_team_averages_and_count(
+        ratings_df, active_team, final_column_display_names
+    )
+
+    # If active team and players exist, prepare the team average row and prepend it
+    # num_players_on_team_calc is the reliable count from the helper
+    if active_team and num_players_on_team_calc > 0 and styled_team_averages_dict:
+        team_average_row_for_table = {}
+        # Specific info for the team row
+        team_average_row_for_table['Name'] = {'value': active_team.name, 'css_class': None}
+        team_average_row_for_table['Player_ID'] = {'value': 'TEAM_AVERAGE_ROW', 'css_class': None} # Special ID
+        team_average_row_for_table['Status'] = {
+            'value': f"Team Avg ({num_players_on_team_calc} Player{'s' if num_players_on_team_calc != 1 else ''})",
+            'css_class': None 
+        }
+
+        # Add the calculated and styled averages
+        for col_key, styled_value_dict in styled_team_averages_dict.items():
+            team_average_row_for_table[col_key] = styled_value_dict
+        
+        # Ensure all displayable columns have an entry in the team average row
+        for col_key in final_column_display_names.keys():
+            if col_key not in team_average_row_for_table:
+                team_average_row_for_table[col_key] = {'value': "N/A", 'css_class': None}
+
+        styled_ratings_data.insert(0, team_average_row_for_table)
+
     context = {
         'ratings': styled_ratings_data,
         'column_display_names': final_column_display_names,
         'teams': user_teams if request.user.is_authenticated else None, # Pass all user teams for other parts of UI if needed
         'active_team': active_team,  # Add the active team to the context
+        # 'team_averages' and 'num_players_on_team' for the separate table are no longer needed here
+        # as the team average row is now part of 'ratings'.
     }
     return render(request, 'fantasy_nba/show_ratings.html', context)
+
+def _style_single_row_data(data_dict: dict, columns_to_apply_css_to: list):
+    styled_row = {}
+    for col_actual_name, raw_value in data_dict.items():
+        css_class = None
+        # Apply styling only if the column is in the specified list and value is numeric
+        if col_actual_name in columns_to_apply_css_to and isinstance(raw_value, (int, float)):
+            css_class = _get_value_based_css_class(raw_value)
+        
+        styled_row[col_actual_name] = {'value': raw_value, 'css_class': css_class}
+    return styled_row
+
+def _get_styled_team_averages_and_count(ratings_df, active_team, final_column_display_names_map):
+    """
+    Calculates and styles team averages for an active team.
+    Returns a tuple: (styled_team_averages_dict, num_players_on_team)
+    styled_team_averages_dict is like: {'PTS_RT': {'value': 70.5, 'css_class': '...'}, ...}
+    Returns (None, 0) if no averages can be calculated or no active team.
+    """
+    if not active_team:
+        return None, 0
+
+    on_team_player_ids = set(
+        TeamPlayer.objects.filter(team=active_team, status='ON_TEAM').values_list('player_id', flat=True)
+    )
+    num_players_on_team = len(on_team_player_ids)
+
+    if num_players_on_team == 0:
+        return None, 0 # Return 0 for count, None for averages
+
+    team_averages_raw = {}
+    cols_for_averaging = [
+        key for key in final_column_display_names_map.keys()
+        if key not in ['Name', 'Player_ID', 'Status'] and key in ratings_df.columns and pd.api.types.is_numeric_dtype(ratings_df[key])
+    ]
+
+    team_ratings_df = ratings_df[ratings_df['Player_ID'].isin(on_team_player_ids)]
+
+    if team_ratings_df.empty and num_players_on_team > 0: # Players on team, but not in ratings_df
+        return _style_single_row_data({col: None for col in cols_for_averaging}, cols_for_averaging), num_players_on_team
+
+    team_averages_raw = {col: team_ratings_df[col].mean() if col in team_ratings_df else None for col in cols_for_averaging}
+    styled_team_averages = _style_single_row_data(team_averages_raw, cols_for_averaging)
+    return styled_team_averages, num_players_on_team
 
 def sort_ratings(request: HttpRequest):
     sort_by = request.GET.get('sort_by')
@@ -218,47 +295,8 @@ def sort_ratings(request: HttpRequest):
         request.session['sort_direction'] = 'desc'
         ascending_flag = False # Sort descending
 
-    # Prepare list of columns to display and their display names, including punt columns
-    columns_to_extract = list(COLUMN_DISPLAY_NAMES.keys())
-    punt_perf_col_actual_name = None
-    punt_perf_col_display_name = None
-    punt_overall_col_actual_name = None
-    punt_overall_col_display_name = None
+    final_column_display_names = _get_final_column_display_names(request.session, ratings_data_module.ratings.columns)
 
-    punted_categories = request.session.get('punted_categories', [])
-    if punted_categories:
-        punt_suffix = "_Punt_" + "_".join(sorted([cat.replace('_RT', '') for cat in punted_categories]))
-        punt_perf_col_actual_name_candidate = f'Total{punt_suffix}_Available_Rating'
-        punt_overall_col_actual_name_candidate = f'Total{punt_suffix}_Rating'
-
-        # Prepare formatted string for punted categories display
-        punted_display_names_list = [COLUMN_DISPLAY_NAMES[cat].replace('_RT', '') for cat in punted_categories]
-        if len(punted_display_names_list) == 1:
-            punted_cats_formatted_for_display = punted_display_names_list[0]
-        elif len(punted_display_names_list) == 2:
-            punted_cats_formatted_for_display = f"{punted_display_names_list[0]} & {punted_display_names_list[1]}"
-        else: # Fallback
-            punted_cats_formatted_for_display = ", ".join(punted_display_names_list)
-
-        if punt_perf_col_actual_name_candidate in ratings_data_module.ratings.columns:
-            punt_perf_col_actual_name = punt_perf_col_actual_name_candidate
-            punt_perf_col_display_name = f"Performance Rating (Punt {punted_cats_formatted_for_display})"
-            if punt_perf_col_actual_name not in columns_to_extract:
-                columns_to_extract.append(punt_perf_col_actual_name)
-
-        if punt_overall_col_actual_name_candidate in ratings_data_module.ratings.columns:
-            punt_overall_col_actual_name = punt_overall_col_actual_name_candidate
-            punt_overall_col_display_name = f"Overall Rating (Punt {punted_cats_formatted_for_display})"
-            if punt_overall_col_actual_name not in columns_to_extract:
-                columns_to_extract.append(punt_overall_col_actual_name)
-
-    final_column_display_names = COLUMN_DISPLAY_NAMES.copy()
-    if punt_perf_col_actual_name and punt_perf_col_display_name:
-        final_column_display_names[punt_perf_col_actual_name] = punt_perf_col_display_name
-    if punt_overall_col_actual_name and punt_overall_col_display_name:
-        final_column_display_names[punt_overall_col_actual_name] = punt_overall_col_display_name
-    
-    final_column_display_names['Status'] = 'Status' # Add Status column
 
     # Sort the DataFrame
     if sort_by in ratings_df.columns:
@@ -266,17 +304,19 @@ def sort_ratings(request: HttpRequest):
     else:
         sorted_ratings_df = ratings_df # No sort or use default if sort_by is invalid
     
-    active_team = None # Initialize active_team
+    active_team = None 
+    active_team_player_ids = set()
+    team_player_statuses_map = {}
+    on_team_player_ids = set() # Player IDs for those with status 'ON_TEAM'
+
     if request.user.is_authenticated:
         active_team = Team.objects.filter(creator=request.user, is_active=True).first()
         if active_team:
             # Fetch all player statuses for the active team efficiently
-            team_player_entries = TeamPlayer.objects.filter(team=active_team)
-            active_team_player_ids = set(tp.player_id for tp in team_player_entries) # Used for 'is_on_team'
+            team_player_entries = TeamPlayer.objects.filter(team=active_team).select_related('team')
+            active_team_player_ids = set(tp.player_id for tp in team_player_entries) # All players associated
             team_player_statuses_map = {tp.player_id: tp.status for tp in team_player_entries}
-        else:
-            active_team_player_ids = set()
-            team_player_statuses_map = {}
+            on_team_player_ids = set(tp.player_id for tp in team_player_entries if tp.status == 'ON_TEAM')
 
     initial_data_list_sorted = []
     for record in sorted_ratings_df.to_dict('records'): # Use the sorted DataFrame here
@@ -313,6 +353,32 @@ def sort_ratings(request: HttpRequest):
     
     styled_sorted_ratings_data = _apply_styles_to_data(initial_data_list_sorted, STYLED_COLUMNS)
 
+    (styled_team_averages_dict, num_players_on_team_calc) = _get_styled_team_averages_and_count(
+        ratings_df, active_team, final_column_display_names # Use original ratings_df for source data for averages
+    )
+
+    # If active team and players exist, prepare the team average row and prepend it
+    if active_team and num_players_on_team_calc > 0 and styled_team_averages_dict:
+        team_average_row_for_table = {}
+        # Specific info for the team row
+        team_average_row_for_table['Name'] = {'value': active_team.name, 'css_class': None}
+        team_average_row_for_table['Player_ID'] = {'value': 'TEAM_AVERAGE_ROW', 'css_class': None} # Special ID
+        team_average_row_for_table['Status'] = {
+            'value': f"Team Avg ({num_players_on_team_calc} Player{'s' if num_players_on_team_calc != 1 else ''})",
+            'css_class': None
+        }
+
+        # Add the calculated and styled averages
+        for col_key, styled_value_dict in styled_team_averages_dict.items():
+            team_average_row_for_table[col_key] = styled_value_dict
+
+        # Ensure all displayable columns have an entry in the team average row
+        for col_key in final_column_display_names.keys():
+            if col_key not in team_average_row_for_table:
+                team_average_row_for_table[col_key] = {'value': "N/A", 'css_class': None}
+
+        styled_sorted_ratings_data.insert(0, team_average_row_for_table)
+
     context = {
         'ratings': styled_sorted_ratings_data,
         'column_display_names': final_column_display_names,
@@ -321,6 +387,7 @@ def sort_ratings(request: HttpRequest):
         'active_team': active_team, # Pass active_team for template logic
     }
     return render(request, 'fantasy_nba/show_ratings.html', context)
+
 
 def _get_value_based_css_class(value):
     """Determines CSS class based on fixed value thresholds.
@@ -458,34 +525,67 @@ def team(request):
 @login_required
 def update_player_status(request):
     if request.method == 'POST':
+        json_response_data = {'success': False} # Initialize response data
         active_team = Team.objects.filter(creator=request.user, is_active=True).first()
         if not active_team:
-            return JsonResponse({'success': False, 'error': 'No active team found.'}, status=400)
+            json_response_data['error'] = 'No active team found.'
+            return JsonResponse(json_response_data, status=400)
 
         player_id_str = request.POST.get('player_id')
         new_status = request.POST.get('status') # Expected: 'ON_TEAM', 'AVAILABLE', 'UNAVAILABLE'
 
         if not player_id_str:
-            return JsonResponse({'success': False, 'error': 'Player ID is required.'}, status=400)
+            json_response_data['error'] = 'Player ID is required.'
+            return JsonResponse(json_response_data, status=400)
         if not new_status or new_status not in [choice[0] for choice in TeamPlayer.STATUS_CHOICES]:
-            return JsonResponse({'success': False, 'error': 'Invalid status provided.'}, status=400)
+            json_response_data['error'] = 'Invalid status provided.'
+            return JsonResponse(json_response_data, status=400)
 
         try:
             player_id = int(player_id_str)
         except ValueError:
-            return JsonResponse({'success': False, 'error': 'Invalid Player ID format.'}, status=400)
+            json_response_data['error'] = 'Invalid Player ID format.'
+            return JsonResponse(json_response_data, status=400)
 
+        old_status = None
+        try:
+            tp_instance = TeamPlayer.objects.get(team=active_team, player_id=player_id)
+            old_status = tp_instance.status
+        except TeamPlayer.DoesNotExist:
+            pass # old_status remains None, player wasn't in TeamPlayer for this team
+        
         team_player, created = TeamPlayer.objects.update_or_create(
             team=active_team, player_id=player_id,
             defaults={'status': new_status}
         )
+
+        json_response_data['success'] = True
         message = f"Player status updated to {team_player.get_status_display()}."
         if created and new_status == 'AVAILABLE': # If created with default status, message might be slightly different
             message = f"Player {player_id} record created with status {team_player.get_status_display()}."
-        
-        return JsonResponse({'success': True, 'message': message, 'new_status_code': team_player.status, 'new_status_display': team_player.get_status_display()})
+        json_response_data['message'] = message
+        json_response_data['new_status_code'] = team_player.status
+        json_response_data['new_status_display'] = team_player.get_status_display()
 
-    return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=405)
+        # Check if team composition for averages changed
+        player_was_on_team = (old_status == 'ON_TEAM')
+        player_is_now_on_team = (team_player.status == 'ON_TEAM')
+        recalculate_averages = (player_was_on_team != player_is_now_on_team)
+
+        if recalculate_averages:
+            ratings_df_copy = ratings_data_module.ratings.copy()
+            current_final_column_names = _get_final_column_display_names(request.session, ratings_data_module.ratings.columns)
+            
+            styled_avg_data, num_on_team = _get_styled_team_averages_and_count(
+                ratings_df_copy, active_team, current_final_column_names
+            )
+            json_response_data['team_averages_data'] = styled_avg_data # This is the dict of styled values or None
+            json_response_data['num_players_on_team'] = num_on_team
+
+        return JsonResponse(json_response_data)
+
+    json_response_data['error'] = 'Invalid request method.'
+    return JsonResponse(json_response_data, status=405)
 
 
 @login_required
