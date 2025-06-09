@@ -16,12 +16,32 @@
 <body>
     <h1 class="header-big">Ratings</h1>
 
+    <div class="table-controls" style="margin-bottom: 15px; display: flex; align-items: center; gap: 20px;">
+        <form method="GET" action="{% url 'show_ratings' %}" id="filter-form" style="display: inline-block; margin-right: 20px;">
+            <label for="status-filter">Filter by Status:</label>
+            <select name="status_filter" id="status-filter" onchange="document.getElementById('filter-form').submit();">
+                {% for value, display_name in status_filter_choices %}
+                    <option value="{{ value }}" {% if current_status_filter == value %}selected{% endif %}>{{ display_name }}</option>
+                {% endfor %}
+            </select>
+            {# Hidden fields to preserve sorting when filter changes #}
+            {% if sort_by %}<input type="hidden" name="sort_by" value="{{ sort_by }}">{% endif %}
+            {% if sort_direction %}<input type="hidden" name="sort_direction" value="{{ sort_direction }}">{% endif %}
+            {# No explicit submit button needed if onchange submits the form #}
+            {# <button type="submit">Filter</button> #}
+        </form>
+        <div>
+            <label for="name-search">Search by Name:</label>
+            <input type="text" id="name-search" placeholder="Enter player name...">
+        </div>
+    </div>
+
     <table id="ratings-table" class="styled-table">
         <thead>
             <tr>
                 {% for column_key, display_name in column_display_names.items %}
                     <th class="{% if column_key == 'Player_ID' %}column-hidden-player-id{% endif %}">
-                        <a href="{% url 'sort_ratings' %}?sort_by={{ column_key }}">
+                        <a href="{% url 'sort_ratings' %}?sort_by={{ column_key }}{% if current_status_filter and current_status_filter != 'ALL' %}&status_filter={{ current_status_filter|urlencode }}{% endif %}">
                             {{ display_name }}
                             {% if sort_by == column_key and sort_direction == 'asc' %} ▲{% endif %}
                             {% if sort_by == column_key and sort_direction == 'desc' %} ▼{% endif %}
@@ -47,7 +67,7 @@
                     {% for column_actual_name, column_display_name_val in column_display_names.items %}
                         {% with cell_data=row|get_item:column_actual_name %} {# Each cell_data is {'value': ..., 'css_class': ...} #}
                             <td data-column-key="{{ column_actual_name }}" class="{% if cell_data.css_class %}{{ cell_data.css_class }}{% endif %}{% if column_actual_name == 'Status' %} player-status-cell{% endif %}{% if column_actual_name == 'Player_ID' %} column-hidden-player-id{% endif %}">
-                                {% if column_actual_name == "Name" or column_actual_name == "Player_ID" or column_actual_name == "TEAM_ID" or column_actual_name == "Status" %}
+                                {% if column_actual_name == "Name" or column_actual_name == "Player_ID" or column_actual_name == "TEAM_ID" or column_actual_name == "Status" or column_actual_name == "POS" %}
                                     {{ cell_data.value }}
                                 {% else %}
                                     {{ cell_data.value|floatformat:2|default:"N/A" }}
@@ -216,6 +236,32 @@
                         alert('An error occurred: ' + error.message);
                     });
                 });
+            });
+
+            // Name Search Functionality
+            const nameSearchInput = document.getElementById('name-search');
+            const ratingsTableBody = document.getElementById('ratings-table-body');
+            const allRows = ratingsTableBody.getElementsByTagName('tr');
+
+            nameSearchInput.addEventListener('keyup', function() {
+                const searchTerm = nameSearchInput.value.toLowerCase();
+
+                for (let i = 0; i < allRows.length; i++) {
+                    const row = allRows[i];
+                    const playerIdVal = row.getAttribute('data-player-id');
+
+                    // Always show the team average row if it exists
+                    if (playerIdVal === 'TEAM_AVERAGE_ROW') {
+                        row.style.display = ''; // Ensure it's visible
+                        continue;
+                    }
+
+                    const nameCell = row.querySelector('td[data-column-key="Name"]');
+                    if (nameCell) {
+                        const nameText = nameCell.textContent.toLowerCase();
+                        row.style.display = nameText.includes(searchTerm) ? '' : 'none';
+                    }
+                }
             });
         });
     </script>

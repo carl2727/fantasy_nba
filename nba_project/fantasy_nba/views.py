@@ -10,13 +10,16 @@ from . import ratings as ratings_data_module # Renamed to avoid conflict with 'r
 from .models import *
 from django.db import transaction
 from .forms import MinimalUserCreationForm
+from django.conf import settings # For accessing BASE_DIR
 import pandas as pd
 import logging
+import os
 
 # Get an instance of a logger
 logger = logging.getLogger(__name__)
 COLUMN_DISPLAY_NAMES = {
     'Name': 'Name',
+    'POS': 'POS', # New Position Column
     'PTS_RT': 'PTS',
     'REB_RT': 'REB',
     'AST_RT': 'AST',
@@ -49,15 +52,95 @@ def _get_default_columns():
     # This function's direct operational use in show_ratings is limited
     # as columns_to_extract is dynamically built.
     # Providing a sensible default list of keys.
-    return [
+    default_cols = [
         'Name', 'PTS_RT', 'REB_RT', 'AST_RT', 'FGN_RT', 'FTN_RT',
         'FG3M_RT', 'BLK_RT', 'STL_RT', 'TOV_RT',
         'Total_Rating', 'Total_Available_Rating'
     ]
+    if 'POS' in COLUMN_DISPLAY_NAMES: # Conditionally add POS if defined
+        default_cols.insert(1, 'POS') # Insert POS after Name
+    return default_cols
     
 RATING_CHOICES = [
     (key, COLUMN_DISPLAY_NAMES[key].replace('_RT', '')) for key in COLUMN_DISPLAY_NAMES if key not in ['Name', 'Total_Rating', 'Total_Available_Rating']
 ]
+
+STATUS_FILTER_CHOICES = [
+    ('ALL', 'All Players'),
+    ('On Team', 'On Team'),       # Value matches TeamPlayer display name for 'ON_TEAM'
+    ('Available', 'Available'),   # Value matches TeamPlayer display name for 'AVAILABLE'
+    ('Unavailable', 'Unavailable') # Value matches TeamPlayer display name for 'UNAVAILABLE'
+]
+
+if hasattr(settings, 'BASE_DIR'):
+    FANTASY_POSITIONS_FILE_PATH = os.path.join(settings.BASE_DIR.parent, 'fantasy_positions.csv')
+else:
+    logger.error("settings.BASE_DIR is not configured. Cannot determine fantasy_positions.csv path.")
+    FANTASY_POSITIONS_FILE_PATH = 'fantasy_positions.csv' 
+
+FANTASY_POSITIONS_DATA_CACHE = {} 
+
+def _load_fantasy_positions_data(file_path=FANTASY_POSITIONS_FILE_PATH):
+    """
+    Loads fantasy positions from the CSV file.
+    Returns a dictionary mapping PERSON_ID to a list of their fantasy positions.
+    Uses a simple in-memory cache.
+    """
+    global FANTASY_POSITIONS_DATA_CACHE
+    logger.info(f"Attempting to load fantasy positions from: {file_path}")
+
+    logger.info("Forcing reload of fantasy positions data (cache disabled for debugging).")
+    
+    player_positions_map = {}
+    try:
+        if not os.path.exists(file_path):
+            logger.error(f"Fantasy positions file not found: {file_path}")
+            return {}
+
+        df = pd.read_csv(file_path, dtype={'PERSON_ID': str}) 
+        if 'PERSON_ID' not in df.columns or 'FANTASY_POSITION' not in df.columns:
+            logger.error(f"Fantasy positions file {file_path} is missing required columns: PERSON_ID or FANTASY_POSITION.")
+            return {}
+
+        df['PERSON_ID_NUMERIC'] = pd.to_numeric(df['PERSON_ID'], errors='coerce')
+        
+        original_count = len(df)
+        df.dropna(subset=['PERSON_ID_NUMERIC'], inplace=True)
+        converted_count = len(df)
+        
+        if original_count != converted_count:
+            logger.warning(f"{original_count - converted_count} rows in {file_path} had non-numeric or missing PERSON_ID and were dropped.")
+
+        if df.empty:
+            logger.warning(f"No valid numeric PERSON_IDs found in {file_path} after conversion. The map will be empty.")
+            FANTASY_POSITIONS_DATA_CACHE = {}
+            return {}
+            
+        df['PERSON_ID_INT'] = df['PERSON_ID_NUMERIC'].astype(int)
+
+        player_positions_map = df.groupby('PERSON_ID_INT')['FANTASY_POSITION'].apply(
+            lambda x: sorted(list(set(x.astype(str).dropna())))
+        ).to_dict()
+
+        # ---- START DETAILED DEBUG for _load_fantasy_positions_data ----
+        logger.info(f"DEBUG (_load_fantasy_positions_data): player_positions_map created with {len(player_positions_map)} entries.")
+        ids_to_check_in_map_creation = [1628983, 203999, 1630162, 1628369, 1626157] 
+        found_in_map_creation = {id_val: player_positions_map.get(id_val) for id_val in ids_to_check_in_map_creation if id_val in player_positions_map}
+        
+        if found_in_map_creation:
+            key_type_example = type(list(found_in_map_creation.keys())[0]) if found_in_map_creation else 'N/A'
+            logger.info(f"DEBUG (_load_fantasy_positions_data): Specific IDs FOUND in map (key type: {key_type_example}): {found_in_map_creation}")
+        
+        map_keys_sample_creation = list(player_positions_map.keys())[:5]
+        if map_keys_sample_creation:
+            logger.info(f"DEBUG (_load_fantasy_positions_data): Sample of actual keys in map: {map_keys_sample_creation}. Types: {[type(k) for k in map_keys_sample_creation]}")
+        # ---- END DETAILED DEBUG for _load_fantasy_positions_data ----
+
+        FANTASY_POSITIONS_DATA_CACHE = player_positions_map 
+        logger.info(f"Successfully loaded/reloaded fantasy positions from {file_path}. Map has {len(player_positions_map)} entries.")
+    except Exception as e:
+        logger.error(f"Error loading fantasy positions from {file_path}: {e}", exc_info=True)
+    return player_positions_map
 
 def _get_final_column_display_names(session_data, all_rating_columns):
     """
@@ -79,7 +162,7 @@ def _get_final_column_display_names(session_data, all_rating_columns):
             punted_cats_formatted_for_display = punted_display_names_list[0]
         elif len(punted_display_names_list) == 2:
             punted_cats_formatted_for_display = f"{punted_display_names_list[0]} & {punted_display_names_list[1]}"
-        else: # Fallback
+        else: 
             punted_cats_formatted_for_display = ", ".join(punted_display_names_list)
 
         if punt_perf_col_actual_name_candidate in all_rating_columns:
@@ -130,104 +213,139 @@ def punt(request: HttpRequest):
 
 def show_ratings(request: HttpRequest):
     ratings_df = ratings_data_module.ratings.copy()
-    final_column_display_names = _get_final_column_display_names(request.session, ratings_data_module.ratings.columns)
-    # columns_to_extract is implicitly handled by iterating final_column_display_names.keys()
-    # and checking existence in `record` during data preparation.
+    current_status_filter = request.GET.get('status_filter', 'ALL')
+    fantasy_positions_map = _load_fantasy_positions_data()
 
-    # Get the active team for the user
+
+    final_column_display_names = _get_final_column_display_names(request.session, ratings_data_module.ratings.columns)
+    
     user_teams = None
-    active_team = None  # Initialize active_team to None
+    active_team = None 
     active_team_player_ids = set()
     team_player_statuses_map = {}
-    on_team_player_ids = set() # Player IDs for those with status 'ON_TEAM'
+    on_team_player_ids = set() 
 
     if request.user.is_authenticated:
-        # Query all teams for the user first
         user_teams = Team.objects.filter(creator=request.user)
         active_team = user_teams.filter(is_active=True).first()
         if active_team:
-            # Fetch all player statuses for the active team efficiently
             team_player_entries = TeamPlayer.objects.filter(team=active_team).select_related('team')
-            active_team_player_ids = set(tp.player_id for tp in team_player_entries) # All players associated with the team
+            active_team_player_ids = set(tp.player_id for tp in team_player_entries) 
             team_player_statuses_map = {tp.player_id: tp.status for tp in team_player_entries}
             on_team_player_ids = set(tp.player_id for tp in team_player_entries if tp.status == 'ON_TEAM')
 
 
-    # Prepare data for styling
     initial_data_list = []
     for record in ratings_df.to_dict('records'):
         processed_record = {}
         player_id_val = record.get('Player_ID')
 
-        # Store Player_ID (it will be styled by _apply_styles_to_data)
         processed_record['Player_ID'] = player_id_val
 
-        # Determine and store is_on_team (it will be styled by _apply_styles_to_data)
         is_on_team_flag = False
         if player_id_val is not None:
             try:
-                # Player_ID from pandas might be float, ensure int for comparison
                 is_on_team_flag = int(float(player_id_val)) in active_team_player_ids
             except (ValueError, TypeError):
                 logger.warning(f"Could not convert Player_ID '{player_id_val}' to int for team check in show_ratings.")
         processed_record['is_on_team'] = is_on_team_flag
 
-        # Add player status
-        current_status_display = 'Available' # Default status if not in TeamPlayer or no active team
+        current_status_display = 'Available' 
         if active_team and player_id_val is not None:
             try:
                 player_id_int = int(float(player_id_val))
-                status_code = team_player_statuses_map.get(player_id_int, 'AVAILABLE') # Default to AVAILABLE if not in map
+                status_code = team_player_statuses_map.get(player_id_int, 'AVAILABLE') 
                 current_status_display = dict(TeamPlayer.STATUS_CHOICES).get(status_code, 'Available')
             except (ValueError, TypeError):
                 logger.warning(f"Could not convert Player_ID '{player_id_val}' to int for status lookup in show_ratings.")
         processed_record['Status'] = current_status_display
 
-        # Add all other columns defined in final_column_display_names from the original record
+        fantasy_positions_str = "N/A" 
+        if player_id_val is not None:
+            try:
+                player_id_int = int(float(player_id_val)) 
+
+                # ---- START PRE-LOOKUP DEBUG for show_ratings ----
+                ids_to_debug_lookup = [1628983, 203999, 1630162] 
+                if player_id_int in ids_to_debug_lookup:
+                    is_key_present = player_id_int in fantasy_positions_map
+                    logger.info(f"PRE-LOOKUP DEBUG (show_ratings) for Player_ID {player_id_int}: Is key in map? {is_key_present}")
+                    if is_key_present:
+                        logger.info(f"PRE-LOOKUP DEBUG (show_ratings) for Player_ID {player_id_int}: Value in map is {fantasy_positions_map[player_id_int]}")
+                    else:
+                        logger.info(f"PRE-LOOKUP DEBUG (show_ratings) for Player_ID {player_id_int}: Key NOT in map. Map size: {len(fantasy_positions_map)}. First 20 map keys: {list(fantasy_positions_map.keys())[:20]}")
+                # ---- END PRE-LOOKUP DEBUG for show_ratings ----
+
+                positions_list = fantasy_positions_map.get(player_id_int, [])
+                
+                if positions_list:
+                    fantasy_positions_str = ", ".join(positions_list) 
+            except (ValueError, TypeError):
+                logger.warning(f"Could not process Player_ID '{player_id_val}' for fantasy position lookup in show_ratings.", exc_info=True)
+        processed_record['POS'] = fantasy_positions_str
+        
+        # ---- START POST-LOOKUP DEBUG for show_ratings ----
+        if player_id_val is not None:
+            player_id_int_for_debug = None
+            try:
+                player_id_int_for_debug = int(float(player_id_val))
+                if player_id_int_for_debug == 1628983: # SGA
+                    logger.info(f"POST-LOOKUP DEBUG (show_ratings) for SGA (1628983): processed_record['POS'] set to '{processed_record['POS']}'")
+            except (ValueError, TypeError):
+                pass 
+        # ---- END POST-LOOKUP DEBUG for show_ratings ----
+
         for col_key in final_column_display_names.keys():
-            if col_key not in processed_record: # Avoid overwriting Player_ID, is_on_team, Status
+            if col_key not in processed_record: 
                 if col_key in record:
                     processed_record[col_key] = record[col_key]
         initial_data_list.append(processed_record)
     
-    # The _apply_styles_to_data function will wrap each value, including 'Status'
+    if current_status_filter != 'ALL':
+        initial_data_list = [
+            record for record in initial_data_list
+            if record.get('Status') == current_status_filter
+        ]
+
     styled_ratings_data = _apply_styles_to_data(initial_data_list, STYLED_COLUMNS)
 
-    # Get styled team averages and count using the new helper
     (styled_team_averages_dict, num_players_on_team_calc) = _get_styled_team_averages_and_count(
         ratings_df, active_team, final_column_display_names
     )
 
-    # If active team and players exist, prepare the team average row and prepend it
-    # num_players_on_team_calc is the reliable count from the helper
     if active_team and num_players_on_team_calc > 0 and styled_team_averages_dict:
         team_average_row_for_table = {}
-        # Specific info for the team row
         team_average_row_for_table['Name'] = {'value': active_team.name, 'css_class': None}
-        team_average_row_for_table['Player_ID'] = {'value': 'TEAM_AVERAGE_ROW', 'css_class': None} # Special ID
+        team_average_row_for_table['Player_ID'] = {'value': 'TEAM_AVERAGE_ROW', 'css_class': None} 
         team_average_row_for_table['Status'] = {
             'value': f"Team Avg ({num_players_on_team_calc} Player{'s' if num_players_on_team_calc != 1 else ''})",
             'css_class': None 
         }
 
-        # Add the calculated and styled averages
         for col_key, styled_value_dict in styled_team_averages_dict.items():
             team_average_row_for_table[col_key] = styled_value_dict
         
-        # Ensure all displayable columns have an entry in the team average row
         for col_key in final_column_display_names.keys():
             if col_key not in team_average_row_for_table:
                 team_average_row_for_table[col_key] = {'value': "N/A", 'css_class': None}
 
         styled_ratings_data.insert(0, team_average_row_for_table)
 
+    # ---- START PRE-RENDER DEBUG for show_ratings ----
+    for styled_player_row in styled_ratings_data:
+        if 'Player_ID' in styled_player_row and styled_player_row['Player_ID'].get('value') == 1628983:
+            sga_pos_data = styled_player_row.get('POS', {'value': 'POS_KEY_MISSING_IN_STYLED_ROW', 'css_class': None})
+            logger.info(f"PRE-RENDER DEBUG (show_ratings) for SGA (1628983): styled_ratings_data['POS'] is {sga_pos_data}")
+            break 
+    # ---- END PRE-RENDER DEBUG for show_ratings ----
+    
     context = {
         'ratings': styled_ratings_data,
         'column_display_names': final_column_display_names,
-        'teams': user_teams if request.user.is_authenticated else None, # Pass all user teams for other parts of UI if needed
-        'active_team': active_team,  # Add the active team to the context
-        # 'team_averages' and 'num_players_on_team' for the separate table are no longer needed here
-        # as the team average row is now part of 'ratings'.
+        'teams': user_teams if request.user.is_authenticated else None, 
+        'active_team': active_team,  
+        'status_filter_choices': STATUS_FILTER_CHOICES,
+        'current_status_filter': current_status_filter,
     }
     return render(request, 'fantasy_nba/show_ratings.html', context)
 
@@ -235,7 +353,6 @@ def _style_single_row_data(data_dict: dict, columns_to_apply_css_to: list):
     styled_row = {}
     for col_actual_name, raw_value in data_dict.items():
         css_class = None
-        # Apply styling only if the column is in the specified list and value is numeric
         if col_actual_name in columns_to_apply_css_to and isinstance(raw_value, (int, float)):
             css_class = _get_value_based_css_class(raw_value)
         
@@ -258,7 +375,7 @@ def _get_styled_team_averages_and_count(ratings_df, active_team, final_column_di
     num_players_on_team = len(on_team_player_ids)
 
     if num_players_on_team == 0:
-        return None, 0 # Return 0 for count, None for averages
+        return None, 0 
 
     team_averages_raw = {}
     cols_for_averaging = [
@@ -268,7 +385,7 @@ def _get_styled_team_averages_and_count(ratings_df, active_team, final_column_di
 
     team_ratings_df = ratings_df[ratings_df['Player_ID'].isin(on_team_player_ids)]
 
-    if team_ratings_df.empty and num_players_on_team > 0: # Players on team, but not in ratings_df
+    if team_ratings_df.empty and num_players_on_team > 0: 
         return _style_single_row_data({col: None for col in cols_for_averaging}, cols_for_averaging), num_players_on_team
 
     team_averages_raw = {col: team_ratings_df[col].mean() if col in team_ratings_df else None for col in cols_for_averaging}
@@ -277,49 +394,45 @@ def _get_styled_team_averages_and_count(ratings_df, active_team, final_column_di
 
 def sort_ratings(request: HttpRequest):
     sort_by = request.GET.get('sort_by')
+    current_status_filter = request.GET.get('status_filter', 'ALL')
+    fantasy_positions_map = _load_fantasy_positions_data()
     ratings_df = ratings_data_module.ratings.copy()
 
-    # Determine sort order
-    ascending_flag = False # Default to descending for a new column
+    ascending_flag = False 
     if sort_by == request.session.get('sort_by'):
-        # Same column, toggle direction
         if request.session.get('sort_direction') == 'asc':
             request.session['sort_direction'] = 'desc'
-            ascending_flag = False # Sort descending
-        else: # Was 'desc' or None
+            ascending_flag = False 
+        else: 
             request.session['sort_direction'] = 'asc'
-            ascending_flag = True  # Sort ascending
+            ascending_flag = True  
     else:
-        # New column, default to descending
         request.session['sort_by'] = sort_by
         request.session['sort_direction'] = 'desc'
-        ascending_flag = False # Sort descending
+        ascending_flag = False 
 
     final_column_display_names = _get_final_column_display_names(request.session, ratings_data_module.ratings.columns)
 
-
-    # Sort the DataFrame
     if sort_by in ratings_df.columns:
         sorted_ratings_df = ratings_df.sort_values(by=sort_by, ascending=ascending_flag)
     else:
-        sorted_ratings_df = ratings_df # No sort or use default if sort_by is invalid
+        sorted_ratings_df = ratings_df 
     
     active_team = None 
     active_team_player_ids = set()
     team_player_statuses_map = {}
-    on_team_player_ids = set() # Player IDs for those with status 'ON_TEAM'
+    on_team_player_ids = set() 
 
     if request.user.is_authenticated:
         active_team = Team.objects.filter(creator=request.user, is_active=True).first()
         if active_team:
-            # Fetch all player statuses for the active team efficiently
             team_player_entries = TeamPlayer.objects.filter(team=active_team).select_related('team')
-            active_team_player_ids = set(tp.player_id for tp in team_player_entries) # All players associated
+            active_team_player_ids = set(tp.player_id for tp in team_player_entries) 
             team_player_statuses_map = {tp.player_id: tp.status for tp in team_player_entries}
             on_team_player_ids = set(tp.player_id for tp in team_player_entries if tp.status == 'ON_TEAM')
 
     initial_data_list_sorted = []
-    for record in sorted_ratings_df.to_dict('records'): # Use the sorted DataFrame here
+    for record in sorted_ratings_df.to_dict('records'): 
         processed_record = {}
         player_id_val = record.get('Player_ID')
 
@@ -333,8 +446,7 @@ def sort_ratings(request: HttpRequest):
                 logger.warning(f"Could not convert Player_ID '{player_id_val}' to int for team check in sort_ratings.")
         processed_record['is_on_team'] = is_on_team_flag
 
-        # Add player status
-        current_status_display = 'Available' # Default status
+        current_status_display = 'Available' 
         if active_team and player_id_val is not None:
             try:
                 player_id_int = int(float(player_id_val))
@@ -344,47 +456,80 @@ def sort_ratings(request: HttpRequest):
                 logger.warning(f"Could not convert Player_ID '{player_id_val}' to int for status lookup in sort_ratings.")
         processed_record['Status'] = current_status_display
 
-        # Add all other columns defined in final_column_display_names from the original record
+        fantasy_positions_str = "N/A" 
+        if player_id_val is not None:
+            try:
+                player_id_int = int(float(player_id_val)) 
+                positions_list = fantasy_positions_map.get(player_id_int, [])
+                if positions_list:
+                    fantasy_positions_str = ", ".join(positions_list) 
+            except (ValueError, TypeError):
+                logger.warning(f"Could not process Player_ID '{player_id_val}' for fantasy position lookup in sort_ratings.")
+        processed_record['POS'] = fantasy_positions_str
+        
+        # ---- START POST-LOOKUP DEBUG for sort_ratings (similar to show_ratings) ----
+        if player_id_val is not None:
+            player_id_int_for_debug = None
+            try:
+                player_id_int_for_debug = int(float(player_id_val))
+                if player_id_int_for_debug == 1628983: # SGA
+                    logger.info(f"POST-LOOKUP DEBUG (sort_ratings) for SGA (1628983): processed_record['POS'] set to '{processed_record['POS']}'")
+            except (ValueError, TypeError):
+                pass 
+        # ---- END POST-LOOKUP DEBUG for sort_ratings ----
+
         for col_key in final_column_display_names.keys():
-            if col_key not in processed_record: # Avoid overwriting
+            if col_key not in processed_record: 
                 if col_key in record:
                     processed_record[col_key] = record[col_key]
         initial_data_list_sorted.append(processed_record)
     
+    if current_status_filter != 'ALL':
+        initial_data_list_sorted = [
+            record for record in initial_data_list_sorted
+            if record.get('Status') == current_status_filter
+        ]
+
     styled_sorted_ratings_data = _apply_styles_to_data(initial_data_list_sorted, STYLED_COLUMNS)
 
     (styled_team_averages_dict, num_players_on_team_calc) = _get_styled_team_averages_and_count(
-        ratings_df, active_team, final_column_display_names # Use original ratings_df for source data for averages
+        ratings_df, active_team, final_column_display_names 
     )
 
-    # If active team and players exist, prepare the team average row and prepend it
     if active_team and num_players_on_team_calc > 0 and styled_team_averages_dict:
         team_average_row_for_table = {}
-        # Specific info for the team row
         team_average_row_for_table['Name'] = {'value': active_team.name, 'css_class': None}
-        team_average_row_for_table['Player_ID'] = {'value': 'TEAM_AVERAGE_ROW', 'css_class': None} # Special ID
+        team_average_row_for_table['Player_ID'] = {'value': 'TEAM_AVERAGE_ROW', 'css_class': None} 
         team_average_row_for_table['Status'] = {
             'value': f"Team Avg ({num_players_on_team_calc} Player{'s' if num_players_on_team_calc != 1 else ''})",
             'css_class': None
         }
 
-        # Add the calculated and styled averages
         for col_key, styled_value_dict in styled_team_averages_dict.items():
             team_average_row_for_table[col_key] = styled_value_dict
 
-        # Ensure all displayable columns have an entry in the team average row
         for col_key in final_column_display_names.keys():
             if col_key not in team_average_row_for_table:
                 team_average_row_for_table[col_key] = {'value': "N/A", 'css_class': None}
 
         styled_sorted_ratings_data.insert(0, team_average_row_for_table)
+    
+    # ---- START PRE-RENDER DEBUG for sort_ratings (similar to show_ratings) ----
+    for styled_player_row in styled_sorted_ratings_data:
+        if 'Player_ID' in styled_player_row and styled_player_row['Player_ID'].get('value') == 1628983:
+            sga_pos_data = styled_player_row.get('POS', {'value': 'POS_KEY_MISSING_IN_STYLED_ROW', 'css_class': None})
+            logger.info(f"PRE-RENDER DEBUG (sort_ratings) for SGA (1628983): styled_ratings_data['POS'] is {sga_pos_data}")
+            break 
+    # ---- END PRE-RENDER DEBUG for sort_ratings ----
 
     context = {
         'ratings': styled_sorted_ratings_data,
         'column_display_names': final_column_display_names,
         'sort_by': request.session.get('sort_by'),
         'sort_direction': request.session.get('sort_direction'),
-        'active_team': active_team, # Pass active_team for template logic
+        'active_team': active_team, 
+        'status_filter_choices': STATUS_FILTER_CHOICES,
+        'current_status_filter': current_status_filter,
     }
     return render(request, 'fantasy_nba/show_ratings.html', context)
 
@@ -417,34 +562,24 @@ def _apply_styles_to_data(data_list_of_dicts: list, columns_to_style: list):
     styled_data = []
     for player_row_dict in data_list_of_dicts:
         styled_player_row = {}
-        # Ensure 'is_on_team' and 'Player_ID' are processed and included
-        # even if not in STYLED_COLUMNS, they will get a default {'value': ..., 'css_class': None}
-        # The Player_ID specific logic below handles its conversion.
-        # The is_on_team flag will be wrapped like any other non-styled column.
-        for col_actual_name, raw_value in player_row_dict.items(): # Changed 'value' to 'raw_value' for clarity
-            value_to_store = raw_value # This will be the value stored in the dict for the template
+        for col_actual_name, raw_value in player_row_dict.items(): 
+            value_to_store = raw_value 
 
             if col_actual_name == 'Player_ID':
-                logger.debug(f"Styling Player_ID: Original value from player_row_dict is '{raw_value}', type: {type(raw_value)}")
                 try:
-                    # Attempt to convert to int.
-                    # Convert to float first to handle cases like "123.0" or 123.0, then to int.
                     if pd.notna(raw_value):
                         value_to_store = int(float(raw_value))
                     else:
-                        value_to_store = None # Handle actual missing IDs if they occur
+                        value_to_store = None 
                 except (ValueError, TypeError):
                     logger.warning(f"Could not convert Player_ID value '{raw_value}' to int during styling.")
-                    value_to_store = None # Or some other indicator of an invalid ID
+                    value_to_store = None 
 
             css_class = None
             if col_actual_name in columns_to_style:
-                # value_for_styling should use the raw_value if styling depends on original float precision
                 value_for_styling = raw_value
                 css_class = _get_value_based_css_class(value_for_styling)
             
-            # For columns not in columns_to_style (like 'Name', 'is_on_team', or unstyled Player_ID),
-            # css_class remains None.
             styled_player_row[col_actual_name] = {'value': value_to_store, 'css_class': css_class}
         styled_data.append(styled_player_row)
     return styled_data
@@ -454,7 +589,7 @@ def breakdown(request):
 
 def login_register(request):
     login_form = AuthenticationForm()
-    register_form = MinimalUserCreationForm()  # Use your custom form
+    register_form = MinimalUserCreationForm()  
 
     if request.method == 'POST':
         if 'login' in request.POST:
@@ -464,7 +599,7 @@ def login_register(request):
                 login(request, user)
                 return redirect('show_ratings')
         elif 'register' in request.POST:
-            register_form = MinimalUserCreationForm(request.POST)  # Use your custom form
+            register_form = MinimalUserCreationForm(request.POST)  
             if register_form.is_valid():
                 user = register_form.save()
                 login(request, user)
@@ -479,21 +614,18 @@ def login_register(request):
 @login_required
 def create_team(request):
     if request.method == 'POST':
-        name = request.POST.get('name', '').strip() # Get name and strip whitespace
-        if name: # Check if name is non-empty after stripping
+        name = request.POST.get('name', '').strip() 
+        if name: 
             team = Team.objects.create(name=name, creator=request.user)
-            # If this is the user's first team, set it as active
             if Team.objects.filter(creator=request.user).count() == 1:
                 team.is_active = True
                 team.save()
             messages.success(request, f"Team '{name}' created successfully.")
             return redirect('team')
         else:
-            # Name was empty or just whitespace
             messages.error(request, "Team name cannot be empty or consist only of spaces.")
-            # Fall through to render the form again, messages will be displayed
-
-    return render(request, 'fantasy_nba/create_team.html') # For GET or if POST had an empty/invalid name
+            
+    return render(request, 'fantasy_nba/create_team.html') 
 
 @login_required
 def team(request):
@@ -502,9 +634,7 @@ def team(request):
     if request.method == 'POST':
         team_id = request.POST.get('team_id')
         if team_id:
-            # Deactivate all teams for the user
             Team.objects.filter(creator=request.user).update(is_active=False)
-            # Activate the selected team
             try:
                 team_to_activate = get_object_or_404(Team, team_id=team_id, creator=request.user)
                 team_to_activate.is_active = True
@@ -515,24 +645,21 @@ def team(request):
             return redirect('team')
         else:
             messages.error(request, "No team selected to activate.")
-            # Fall through to render the page again if team_id was missing in POST
-
-    # For GET requests, or POSTs that didn't redirect (e.g. invalid POST)
-    # 'teams' is already fetched at the beginning of the function.
+            
     active_team = teams.filter(is_active=True).first()
     return render(request, 'fantasy_nba/team.html', {'teams': teams, 'active_team': active_team})
 
 @login_required
 def update_player_status(request):
     if request.method == 'POST':
-        json_response_data = {'success': False} # Initialize response data
+        json_response_data = {'success': False} 
         active_team = Team.objects.filter(creator=request.user, is_active=True).first()
         if not active_team:
             json_response_data['error'] = 'No active team found.'
             return JsonResponse(json_response_data, status=400)
 
         player_id_str = request.POST.get('player_id')
-        new_status = request.POST.get('status') # Expected: 'ON_TEAM', 'AVAILABLE', 'UNAVAILABLE'
+        new_status = request.POST.get('status') 
 
         if not player_id_str:
             json_response_data['error'] = 'Player ID is required.'
@@ -552,7 +679,7 @@ def update_player_status(request):
             tp_instance = TeamPlayer.objects.get(team=active_team, player_id=player_id)
             old_status = tp_instance.status
         except TeamPlayer.DoesNotExist:
-            pass # old_status remains None, player wasn't in TeamPlayer for this team
+            pass 
         
         team_player, created = TeamPlayer.objects.update_or_create(
             team=active_team, player_id=player_id,
@@ -561,13 +688,12 @@ def update_player_status(request):
 
         json_response_data['success'] = True
         message = f"Player status updated to {team_player.get_status_display()}."
-        if created and new_status == 'AVAILABLE': # If created with default status, message might be slightly different
+        if created and new_status == 'AVAILABLE': 
             message = f"Player {player_id} record created with status {team_player.get_status_display()}."
         json_response_data['message'] = message
         json_response_data['new_status_code'] = team_player.status
         json_response_data['new_status_display'] = team_player.get_status_display()
 
-        # Check if team composition for averages changed
         player_was_on_team = (old_status == 'ON_TEAM')
         player_is_now_on_team = (team_player.status == 'ON_TEAM')
         recalculate_averages = (player_was_on_team != player_is_now_on_team)
@@ -579,7 +705,7 @@ def update_player_status(request):
             styled_avg_data, num_on_team = _get_styled_team_averages_and_count(
                 ratings_df_copy, active_team, current_final_column_names
             )
-            json_response_data['team_averages_data'] = styled_avg_data # This is the dict of styled values or None
+            json_response_data['team_averages_data'] = styled_avg_data 
             json_response_data['num_players_on_team'] = num_on_team
 
         return JsonResponse(json_response_data)
@@ -604,53 +730,20 @@ def add_player(request):
         except ValueError:
             return JsonResponse({'success': False, 'error': 'Invalid Player ID format.'}, status=400)
 
-        # This view is now superseded by update_player_status.
-        # Default status is 'AVAILABLE' in the model.
         team_player, created = TeamPlayer.objects.get_or_create(
             team=active_team,
             player_id=player_id,
-            defaults={'status': 'ON_TEAM'} # Or handle via update_player_status
+            defaults={'status': 'ON_TEAM'} 
         )
-        # return JsonResponse({'success': True, 'created': created, 'message': 'Player added to team.' if created else 'Player already in team.'})
         return JsonResponse({'success': False, 'error': 'This endpoint is deprecated. Use update_player_status.'}, status=405)
     return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=405)
 
 @login_required
 def remove_player(request):
-    # This view is now superseded by update_player_status (by setting status to AVAILABLE or UNAVAILABLE).
-    # if request.method == 'POST':
-    #     active_team = Team.objects.filter(creator=request.user, is_active=True).first()
-    #     if not active_team:
-    #         return JsonResponse({'success': False, 'error': 'No active team found.'}, status=400)
-
-    #     player_id_str = request.POST.get('player_id')
-    #     if not player_id_str:
-    #         return JsonResponse({'success': False, 'error': 'Player ID is required.'}, status=400)
-
-    #     try:
-    #         player_id = int(player_id_str)
-    #         # To "remove", set status to AVAILABLE
-    #         tp, updated = TeamPlayer.objects.update_or_create(
-    #             team=active_team, player_id=player_id,
-    #             defaults={'status': 'AVAILABLE'}
-    #         )
-    #         return JsonResponse({'success': True, 'message': 'Player status set to Available.'})
-    #     except ValueError:
-    #         return JsonResponse({'success': False, 'error': 'Invalid Player ID format.'}, status=400)
     return JsonResponse({'success': False, 'error': 'This endpoint is deprecated. Use update_player_status.'}, status=405)
 
 @login_required
 def toggle_availability(request):
-    # This view is superseded by update_player_status.
-    # The 'is_available' field is no longer on TeamPlayer model, replaced by 'status'.
-    # if request.method == 'POST':
-        # ...
-        # try:
-            # player_id = int(player_id_str)
-            # tp = get_object_or_404(TeamPlayer, team=active_team, player_id=player_id)
-            # # Logic to toggle between AVAILABLE and UNAVAILABLE, or ON_TEAM
-            # # This is complex with three states and better handled by explicit status setting.
-            # return JsonResponse({'success': True, ...})
     return JsonResponse({'success': False, 'error': 'This endpoint is deprecated. Use update_player_status.'}, status=405)
 
 def logout_view(request):
