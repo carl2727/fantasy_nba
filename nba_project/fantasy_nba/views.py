@@ -46,6 +46,8 @@ STYLED_COLUMNS = [
     'TOV_RT'
 ]
 
+DESIRED_POSITIONS_ORDER = ['PG', 'SG', 'G', 'SF', 'PF', 'F', 'C', 'C']
+CORE_POSITIONS_ROSTER_NEEDS = {'PG': 1, 'SG': 1, 'SF': 1, 'PF': 1, 'C': 2}
 
 def _get_default_columns():
     """Returns a default list of column keys for display."""
@@ -88,9 +90,11 @@ def _load_fantasy_positions_data(file_path=FANTASY_POSITIONS_FILE_PATH):
     """
     global FANTASY_POSITIONS_DATA_CACHE
     logger.info(f"Attempting to load fantasy positions from: {file_path}")
-
-    logger.info("Forcing reload of fantasy positions data (cache disabled for debugging).")
     
+    if FANTASY_POSITIONS_DATA_CACHE: # Check if cache is populated
+        logger.info(f"Using cached fantasy positions data. Map has {len(FANTASY_POSITIONS_DATA_CACHE)} entries.")
+        return FANTASY_POSITIONS_DATA_CACHE
+
     player_positions_map = {}
     try:
         if not os.path.exists(file_path):
@@ -116,25 +120,9 @@ def _load_fantasy_positions_data(file_path=FANTASY_POSITIONS_FILE_PATH):
             FANTASY_POSITIONS_DATA_CACHE = {}
             return {}
             
-        df['PERSON_ID_INT'] = df['PERSON_ID_NUMERIC'].astype(int)
+        df['PERSON_ID_INT'] = df['PERSON_ID_NUMERIC'].astype(int) # Ensure it's int for consistent key type
 
-        player_positions_map = df.groupby('PERSON_ID_INT')['FANTASY_POSITION'].apply(
-            lambda x: sorted(list(set(x.astype(str).dropna())))
-        ).to_dict()
-
-        # ---- START DETAILED DEBUG for _load_fantasy_positions_data ----
-        logger.info(f"DEBUG (_load_fantasy_positions_data): player_positions_map created with {len(player_positions_map)} entries.")
-        ids_to_check_in_map_creation = [1628983, 203999, 1630162, 1628369, 1626157] 
-        found_in_map_creation = {id_val: player_positions_map.get(id_val) for id_val in ids_to_check_in_map_creation if id_val in player_positions_map}
-        
-        if found_in_map_creation:
-            key_type_example = type(list(found_in_map_creation.keys())[0]) if found_in_map_creation else 'N/A'
-            logger.info(f"DEBUG (_load_fantasy_positions_data): Specific IDs FOUND in map (key type: {key_type_example}): {found_in_map_creation}")
-        
-        map_keys_sample_creation = list(player_positions_map.keys())[:5]
-        if map_keys_sample_creation:
-            logger.info(f"DEBUG (_load_fantasy_positions_data): Sample of actual keys in map: {map_keys_sample_creation}. Types: {[type(k) for k in map_keys_sample_creation]}")
-        # ---- END DETAILED DEBUG for _load_fantasy_positions_data ----
+        player_positions_map = df.groupby('PERSON_ID_INT')['FANTASY_POSITION'].apply(lambda x: sorted(list(set(x.astype(str).dropna())))).to_dict()
 
         FANTASY_POSITIONS_DATA_CACHE = player_positions_map 
         logger.info(f"Successfully loaded/reloaded fantasy positions from {file_path}. Map has {len(player_positions_map)} entries.")
@@ -211,19 +199,157 @@ def punt(request: HttpRequest):
         form = PuntForm()
         return render(request, 'fantasy_nba/punt.html', {'form': form})
 
+def _get_team_position_coverage(active_team, fantasy_positions_map):
+    """
+    Calculates the fantasy position coverage for the active team.
+    Returns a string detailing covered and missing positions.
+    """
+    if not active_team:
+        return "No active team selected."
+
+    on_team_player_ids = list(
+        TeamPlayer.objects.filter(team=active_team, status='ON_TEAM').values_list('player_id', flat=True)
+    )
+
+    if not on_team_player_ids:
+        return "Missing positions: PG, SG, G, SF, PF, F, C, C"
+
+    players_on_team_with_pos = []
+    for player_id in on_team_player_ids:
+        # Ensure player_id is an int for lookup, as fantasy_positions_map uses int keys
+        try:
+            pid_int = int(float(player_id))
+            positions = fantasy_positions_map.get(pid_int, [])
+            if positions: # Only consider players with known positions
+                players_on_team_with_pos.append({'id': pid_int, 'fantasy_pos': positions})
+        except (ValueError, TypeError):
+            logger.warning(f"Could not process player_id {player_id} for position coverage due to conversion error.")
+            continue
+
+
+    # Sort players: those with fewer positions get assignment priority for their specific slots
+    sorted_players = sorted(players_on_team_with_pos, key=lambda p: len(p['fantasy_pos']))
+
+    filled_core_slots_count = {'PG': 0, 'SG': 0, 'SF': 0, 'PF': 0, 'C': 0}
+    # To track which specific player filled which slot (optional, mainly for complex tie-breaking or detailed display)
+    # player_slot_assignments = {} # Example: {player_id: 'PG', player_id2: 'C1'}
+
+    # Make a copy of sorted_players to remove players once assigned
+    available_players = list(sorted_players)
+
+
+    # Pass 1: Assign players to their exact core positions
+    for player_data in list(available_players): # Iterate over a copy for safe removal
+        player_id = player_data['id']
+        player_positions = player_data['fantasy_pos']
+        
+        assigned_this_player = False
+        # Prioritize single-position players or exact matches for multi-position players
+        for pos in player_positions:
+            if pos in CORE_POSITIONS_ROSTER_NEEDS: # PG, SG, SF, PF, C
+                if filled_core_slots_count[pos] < CORE_POSITIONS_ROSTER_NEEDS[pos]:
+                    filled_core_slots_count[pos] += 1
+                    # player_slot_assignments[player_id] = pos # Or a more specific slot like C1/C2
+                    available_players.remove(player_data)
+                    assigned_this_player = True
+                    break # Player assigned, move to next player
+        if assigned_this_player:
+            continue
+
+    # Note: The above logic is a greedy approach. For more optimal filling,
+    # especially with multi-position players, a more complex assignment algorithm
+    # (like bipartite matching or flow networks) could be used, but this
+    # should be a good heuristic for typical fantasy scenarios.
+    # The current sorting helps by trying to fill specific needs first.
+
+    # Determine display status
+    position_display_statuses = []
+    pg_covered = filled_core_slots_count['PG'] >= CORE_POSITIONS_ROSTER_NEEDS['PG']
+    sg_covered = filled_core_slots_count['SG'] >= CORE_POSITIONS_ROSTER_NEEDS['SG']
+    sf_covered = filled_core_slots_count['SF'] >= CORE_POSITIONS_ROSTER_NEEDS['SF']
+    pf_covered = filled_core_slots_count['PF'] >= CORE_POSITIONS_ROSTER_NEEDS['PF']
+    
+    # For C, we need to track C1 and C2 separately for display
+    c1_covered = filled_core_slots_count['C'] >= 1
+    c2_covered = filled_core_slots_count['C'] >= 2
+
+    g_covered = pg_covered or sg_covered
+    f_covered = sf_covered or pf_covered
+
+    for slot in DESIRED_POSITIONS_ORDER:
+        status = "missing"
+        if slot == 'PG':
+            if pg_covered: status = "covered"
+        elif slot == 'SG':
+            if sg_covered: status = "covered"
+        elif slot == 'G':
+            if g_covered: status = "covered"
+        elif slot == 'SF':
+            if sf_covered: status = "covered"
+        elif slot == 'PF':
+            if pf_covered: status = "covered"
+        elif slot == 'F':
+            if f_covered: status = "covered"
+        elif slot == 'C': # This will be called twice for the two 'C' slots
+            if c1_covered:
+                status = "covered"
+                c1_covered = False # Mark as used for the first C slot display
+            elif c2_covered: # Check if the second C slot can be marked
+                status = "covered"
+                c2_covered = False # Mark as used for the second C slot display
+        
+        position_display_statuses.append(f"{slot} ({status})")
+
+    return ", ".join(position_display_statuses)
+
 def show_ratings(request: HttpRequest):
+    # ... (existing code for ratings_df, current_status_filter, fantasy_positions_map, sorting) ...
     ratings_df = ratings_data_module.ratings.copy()
     current_status_filter = request.GET.get('status_filter', 'ALL')
     fantasy_positions_map = _load_fantasy_positions_data()
-
-
-    final_column_display_names = _get_final_column_display_names(request.session, ratings_data_module.ratings.columns)
     
+    # --- Sorting Logic ---
+    sort_by_param = request.GET.get('sort_by')
+    
+    active_sort_column = request.session.get('show_ratings_sort_by', None)
+    active_sort_direction = request.session.get('show_ratings_sort_direction', 'desc') 
+
+    if sort_by_param: 
+        if active_sort_column == sort_by_param: 
+            current_sort_direction = 'asc' if active_sort_direction == 'desc' else 'desc'
+        else: 
+            current_sort_direction = 'desc' 
+        
+        request.session['show_ratings_sort_by'] = sort_by_param
+        request.session['show_ratings_sort_direction'] = current_sort_direction
+        
+        active_sort_column = sort_by_param
+        active_sort_direction = current_sort_direction
+
+    if active_sort_column and active_sort_column in ratings_df.columns:
+        ascending_flag = (active_sort_direction == 'asc')
+        if ratings_df[active_sort_column].dtype == 'object':
+            if active_sort_column == 'Name':
+                 ratings_df = ratings_df.sort_values(
+                    by=active_sort_column, 
+                    ascending=ascending_flag, 
+                    na_position='last',
+                    key=lambda col: col.astype(str).str.lower() 
+                )
+            else:
+                ratings_df = ratings_df.sort_values(by=active_sort_column, ascending=ascending_flag, na_position='last')
+        else: 
+            ratings_df = ratings_df.sort_values(by=active_sort_column, ascending=ascending_flag)
+    # --- End of Sorting Logic ---
+    
+    final_column_display_names = _get_final_column_display_names(request.session, ratings_data_module.ratings.columns)
     user_teams = None
     active_team = None 
     active_team_player_ids = set()
     team_player_statuses_map = {}
-    on_team_player_ids = set() 
+    on_team_player_ids = set()
+    team_coverage_string = "No active team or no players on team."
+
 
     if request.user.is_authenticated:
         user_teams = Team.objects.filter(creator=request.user)
@@ -233,6 +359,7 @@ def show_ratings(request: HttpRequest):
             active_team_player_ids = set(tp.player_id for tp in team_player_entries) 
             team_player_statuses_map = {tp.player_id: tp.status for tp in team_player_entries}
             on_team_player_ids = set(tp.player_id for tp in team_player_entries if tp.status == 'ON_TEAM')
+            team_coverage_string = _get_team_position_coverage(active_team, fantasy_positions_map)
 
 
     initial_data_list = []
@@ -264,37 +391,13 @@ def show_ratings(request: HttpRequest):
         if player_id_val is not None:
             try:
                 player_id_int = int(float(player_id_val)) 
-
-                # ---- START PRE-LOOKUP DEBUG for show_ratings ----
-                ids_to_debug_lookup = [1628983, 203999, 1630162] 
-                if player_id_int in ids_to_debug_lookup:
-                    is_key_present = player_id_int in fantasy_positions_map
-                    logger.info(f"PRE-LOOKUP DEBUG (show_ratings) for Player_ID {player_id_int}: Is key in map? {is_key_present}")
-                    if is_key_present:
-                        logger.info(f"PRE-LOOKUP DEBUG (show_ratings) for Player_ID {player_id_int}: Value in map is {fantasy_positions_map[player_id_int]}")
-                    else:
-                        logger.info(f"PRE-LOOKUP DEBUG (show_ratings) for Player_ID {player_id_int}: Key NOT in map. Map size: {len(fantasy_positions_map)}. First 20 map keys: {list(fantasy_positions_map.keys())[:20]}")
-                # ---- END PRE-LOOKUP DEBUG for show_ratings ----
-
                 positions_list = fantasy_positions_map.get(player_id_int, [])
-                
                 if positions_list:
                     fantasy_positions_str = ", ".join(positions_list) 
             except (ValueError, TypeError):
                 logger.warning(f"Could not process Player_ID '{player_id_val}' for fantasy position lookup in show_ratings.", exc_info=True)
         processed_record['POS'] = fantasy_positions_str
         
-        # ---- START POST-LOOKUP DEBUG for show_ratings ----
-        if player_id_val is not None:
-            player_id_int_for_debug = None
-            try:
-                player_id_int_for_debug = int(float(player_id_val))
-                if player_id_int_for_debug == 1628983: # SGA
-                    logger.info(f"POST-LOOKUP DEBUG (show_ratings) for SGA (1628983): processed_record['POS'] set to '{processed_record['POS']}'")
-            except (ValueError, TypeError):
-                pass 
-        # ---- END POST-LOOKUP DEBUG for show_ratings ----
-
         for col_key in final_column_display_names.keys():
             if col_key not in processed_record: 
                 if col_key in record:
@@ -310,7 +413,7 @@ def show_ratings(request: HttpRequest):
     styled_ratings_data = _apply_styles_to_data(initial_data_list, STYLED_COLUMNS)
 
     (styled_team_averages_dict, num_players_on_team_calc) = _get_styled_team_averages_and_count(
-        ratings_df, active_team, final_column_display_names
+        ratings_data_module.ratings.copy(), active_team, final_column_display_names
     )
 
     if active_team and num_players_on_team_calc > 0 and styled_team_averages_dict:
@@ -331,14 +434,6 @@ def show_ratings(request: HttpRequest):
 
         styled_ratings_data.insert(0, team_average_row_for_table)
 
-    # ---- START PRE-RENDER DEBUG for show_ratings ----
-    for styled_player_row in styled_ratings_data:
-        if 'Player_ID' in styled_player_row and styled_player_row['Player_ID'].get('value') == 1628983:
-            sga_pos_data = styled_player_row.get('POS', {'value': 'POS_KEY_MISSING_IN_STYLED_ROW', 'css_class': None})
-            logger.info(f"PRE-RENDER DEBUG (show_ratings) for SGA (1628983): styled_ratings_data['POS'] is {sga_pos_data}")
-            break 
-    # ---- END PRE-RENDER DEBUG for show_ratings ----
-    
     context = {
         'ratings': styled_ratings_data,
         'column_display_names': final_column_display_names,
@@ -346,8 +441,12 @@ def show_ratings(request: HttpRequest):
         'active_team': active_team,  
         'status_filter_choices': STATUS_FILTER_CHOICES,
         'current_status_filter': current_status_filter,
+        'sort_by': active_sort_column,
+        'sort_direction': active_sort_direction,
+        'team_coverage_string': team_coverage_string, # Add to context
     }
     return render(request, 'fantasy_nba/show_ratings.html', context)
+
 
 def _style_single_row_data(data_dict: dict, columns_to_apply_css_to: list):
     styled_row = {}
@@ -391,147 +490,6 @@ def _get_styled_team_averages_and_count(ratings_df, active_team, final_column_di
     team_averages_raw = {col: team_ratings_df[col].mean() if col in team_ratings_df else None for col in cols_for_averaging}
     styled_team_averages = _style_single_row_data(team_averages_raw, cols_for_averaging)
     return styled_team_averages, num_players_on_team
-
-def sort_ratings(request: HttpRequest):
-    sort_by = request.GET.get('sort_by')
-    current_status_filter = request.GET.get('status_filter', 'ALL')
-    fantasy_positions_map = _load_fantasy_positions_data()
-    ratings_df = ratings_data_module.ratings.copy()
-
-    ascending_flag = False 
-    if sort_by == request.session.get('sort_by'):
-        if request.session.get('sort_direction') == 'asc':
-            request.session['sort_direction'] = 'desc'
-            ascending_flag = False 
-        else: 
-            request.session['sort_direction'] = 'asc'
-            ascending_flag = True  
-    else:
-        request.session['sort_by'] = sort_by
-        request.session['sort_direction'] = 'desc'
-        ascending_flag = False 
-
-    final_column_display_names = _get_final_column_display_names(request.session, ratings_data_module.ratings.columns)
-
-    if sort_by in ratings_df.columns:
-        sorted_ratings_df = ratings_df.sort_values(by=sort_by, ascending=ascending_flag)
-    else:
-        sorted_ratings_df = ratings_df 
-    
-    active_team = None 
-    active_team_player_ids = set()
-    team_player_statuses_map = {}
-    on_team_player_ids = set() 
-
-    if request.user.is_authenticated:
-        active_team = Team.objects.filter(creator=request.user, is_active=True).first()
-        if active_team:
-            team_player_entries = TeamPlayer.objects.filter(team=active_team).select_related('team')
-            active_team_player_ids = set(tp.player_id for tp in team_player_entries) 
-            team_player_statuses_map = {tp.player_id: tp.status for tp in team_player_entries}
-            on_team_player_ids = set(tp.player_id for tp in team_player_entries if tp.status == 'ON_TEAM')
-
-    initial_data_list_sorted = []
-    for record in sorted_ratings_df.to_dict('records'): 
-        processed_record = {}
-        player_id_val = record.get('Player_ID')
-
-        processed_record['Player_ID'] = player_id_val
-
-        is_on_team_flag = False
-        if player_id_val is not None:
-            try:
-                is_on_team_flag = int(float(player_id_val)) in active_team_player_ids
-            except (ValueError, TypeError):
-                logger.warning(f"Could not convert Player_ID '{player_id_val}' to int for team check in sort_ratings.")
-        processed_record['is_on_team'] = is_on_team_flag
-
-        current_status_display = 'Available' 
-        if active_team and player_id_val is not None:
-            try:
-                player_id_int = int(float(player_id_val))
-                status_code = team_player_statuses_map.get(player_id_int, 'AVAILABLE')
-                current_status_display = dict(TeamPlayer.STATUS_CHOICES).get(status_code, 'Available')
-            except (ValueError, TypeError):
-                logger.warning(f"Could not convert Player_ID '{player_id_val}' to int for status lookup in sort_ratings.")
-        processed_record['Status'] = current_status_display
-
-        fantasy_positions_str = "N/A" 
-        if player_id_val is not None:
-            try:
-                player_id_int = int(float(player_id_val)) 
-                positions_list = fantasy_positions_map.get(player_id_int, [])
-                if positions_list:
-                    fantasy_positions_str = ", ".join(positions_list) 
-            except (ValueError, TypeError):
-                logger.warning(f"Could not process Player_ID '{player_id_val}' for fantasy position lookup in sort_ratings.")
-        processed_record['POS'] = fantasy_positions_str
-        
-        # ---- START POST-LOOKUP DEBUG for sort_ratings (similar to show_ratings) ----
-        if player_id_val is not None:
-            player_id_int_for_debug = None
-            try:
-                player_id_int_for_debug = int(float(player_id_val))
-                if player_id_int_for_debug == 1628983: # SGA
-                    logger.info(f"POST-LOOKUP DEBUG (sort_ratings) for SGA (1628983): processed_record['POS'] set to '{processed_record['POS']}'")
-            except (ValueError, TypeError):
-                pass 
-        # ---- END POST-LOOKUP DEBUG for sort_ratings ----
-
-        for col_key in final_column_display_names.keys():
-            if col_key not in processed_record: 
-                if col_key in record:
-                    processed_record[col_key] = record[col_key]
-        initial_data_list_sorted.append(processed_record)
-    
-    if current_status_filter != 'ALL':
-        initial_data_list_sorted = [
-            record for record in initial_data_list_sorted
-            if record.get('Status') == current_status_filter
-        ]
-
-    styled_sorted_ratings_data = _apply_styles_to_data(initial_data_list_sorted, STYLED_COLUMNS)
-
-    (styled_team_averages_dict, num_players_on_team_calc) = _get_styled_team_averages_and_count(
-        ratings_df, active_team, final_column_display_names 
-    )
-
-    if active_team and num_players_on_team_calc > 0 and styled_team_averages_dict:
-        team_average_row_for_table = {}
-        team_average_row_for_table['Name'] = {'value': active_team.name, 'css_class': None}
-        team_average_row_for_table['Player_ID'] = {'value': 'TEAM_AVERAGE_ROW', 'css_class': None} 
-        team_average_row_for_table['Status'] = {
-            'value': f"Team Avg ({num_players_on_team_calc} Player{'s' if num_players_on_team_calc != 1 else ''})",
-            'css_class': None
-        }
-
-        for col_key, styled_value_dict in styled_team_averages_dict.items():
-            team_average_row_for_table[col_key] = styled_value_dict
-
-        for col_key in final_column_display_names.keys():
-            if col_key not in team_average_row_for_table:
-                team_average_row_for_table[col_key] = {'value': "N/A", 'css_class': None}
-
-        styled_sorted_ratings_data.insert(0, team_average_row_for_table)
-    
-    # ---- START PRE-RENDER DEBUG for sort_ratings (similar to show_ratings) ----
-    for styled_player_row in styled_sorted_ratings_data:
-        if 'Player_ID' in styled_player_row and styled_player_row['Player_ID'].get('value') == 1628983:
-            sga_pos_data = styled_player_row.get('POS', {'value': 'POS_KEY_MISSING_IN_STYLED_ROW', 'css_class': None})
-            logger.info(f"PRE-RENDER DEBUG (sort_ratings) for SGA (1628983): styled_ratings_data['POS'] is {sga_pos_data}")
-            break 
-    # ---- END PRE-RENDER DEBUG for sort_ratings ----
-
-    context = {
-        'ratings': styled_sorted_ratings_data,
-        'column_display_names': final_column_display_names,
-        'sort_by': request.session.get('sort_by'),
-        'sort_direction': request.session.get('sort_direction'),
-        'active_team': active_team, 
-        'status_filter_choices': STATUS_FILTER_CHOICES,
-        'current_status_filter': current_status_filter,
-    }
-    return render(request, 'fantasy_nba/show_ratings.html', context)
 
 
 def _get_value_based_css_class(value):
@@ -696,9 +654,10 @@ def update_player_status(request):
 
         player_was_on_team = (old_status == 'ON_TEAM')
         player_is_now_on_team = (team_player.status == 'ON_TEAM')
-        recalculate_averages = (player_was_on_team != player_is_now_on_team)
+        recalculate_averages_and_coverage = (player_was_on_team != player_is_now_on_team) or (created and player_is_now_on_team)
 
-        if recalculate_averages:
+
+        if recalculate_averages_and_coverage:
             ratings_df_copy = ratings_data_module.ratings.copy()
             current_final_column_names = _get_final_column_display_names(request.session, ratings_data_module.ratings.columns)
             
@@ -708,11 +667,16 @@ def update_player_status(request):
             json_response_data['team_averages_data'] = styled_avg_data 
             json_response_data['num_players_on_team'] = num_on_team
 
+            # Recalculate and add position coverage
+            fantasy_positions_map = _load_fantasy_positions_data()
+            team_coverage_string = _get_team_position_coverage(active_team, fantasy_positions_map)
+            json_response_data['team_coverage_string'] = team_coverage_string
+
+
         return JsonResponse(json_response_data)
 
     json_response_data['error'] = 'Invalid request method.'
     return JsonResponse(json_response_data, status=405)
-
 
 @login_required
 def add_player(request):

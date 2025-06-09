@@ -16,6 +16,12 @@
 <body>
     <h1 class="header-big">Ratings</h1>
 
+    {% if active_team %}
+    <div id="team-position-coverage-container" style="margin-bottom: 10px; padding: 10px; border: 1px solid #ccc; background-color: #f9f9f9; font-size: 0.9em;">
+        <strong>Position Coverage:</strong> <span id="position-coverage-text">{{ team_coverage_string|default:"Calculating..." }}</span>
+    </div>
+    {% endif %}
+
     <div class="table-controls" style="margin-bottom: 15px; display: flex; align-items: center; gap: 20px;">
         <form method="GET" action="{% url 'show_ratings' %}" id="filter-form" style="display: inline-block; margin-right: 20px;">
             <label for="status-filter">Filter by Status:</label>
@@ -221,6 +227,14 @@
                                             }
                                         });
                                     }
+                                }
+                            }
+
+                            // Update Position Coverage display
+                            if (data.team_coverage_string) {
+                                const coverageTextElement = document.getElementById('position-coverage-text');
+                                if (coverageTextElement) {
+                                    coverageTextElement.textContent = data.team_coverage_string;
                                 }
                             }
                             // Optionally, display data.message to the user (e.g., in a toast notification)
