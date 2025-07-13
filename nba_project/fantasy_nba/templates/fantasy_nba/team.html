@@ -1,39 +1,154 @@
-<!-- templates/fantasy_nba/team.html -->
-{% extends 'fantasy_nba/base.html' %}
+{% extends "fantasy_nba/base.html" %}
 {% load static %}
-{% load extras %}
+
+{% block title %}My Team - Fantasy NBA Assistant{% endblock %}
+
+{% block extra_head %}
+<style>
+    {{ table_css|safe }}
+</style>
+{% endblock %}
+
 {% block content %}
+<div class="container mt-4">
+    
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert {% if message.tags %}alert-{{ message.tags }}{% else %}alert-info{% endif %} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
 
-<div class="auth-container">
-    <h2>Select Active Team</h2>
-    <form method="post" class="auth-form">
-        {% csrf_token %}
-        <ul>
-            {% for team in teams %}
-                <li>
-                    <label>
-                        <input type="radio" name="team_id" value="{{ team.team_id }}" {% if team.is_active %}checked{% endif %}>
-                        {{ team.name }}
-                    </label>
-                </li>
-            {% empty %}
-                <li>You have not created any teams yet.</li>
-            {% endfor %}
-        </ul>
-        <button type="submit">Select Active Team</button>
-    </form>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2>Team Management</h2>
+        <a href="{% url 'create_team' %}" class="btn btn-primary">Create New Team</a>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title">Your Teams</h5>
+            {% if teams %}
+                 <form method="POST" action="{% url 'team' %}" class="row g-3 align-items-center mb-3">
+                     {% csrf_token %}
+                     <div class="col-auto">
+                         <label for="team_id" class="col-form-label">Select Active Team:</label>
+                     </div>
+                     <div class="col-auto">
+                         <select name="team_id" id="team_id" class="form-select">
+                             {% for t in teams %}
+                                <option value="{{ t.team_id }}" {% if active_team and active_team.team_id == t.team_id %}selected{% endif %}>
+                                    {{ t.name }}
+                                </option>
+                             {% endfor %}
+                         </select>
+                     </div>
+                     <div class="col-auto">
+                         <button type="submit" class="btn btn-success">Activate</button>
+                     </div>
+                 </form>
+                 <hr>
+                 <ul class="list-group list-group-flush">
+                     {% for t in teams %}
+                         <li class="list-group-item d-flex justify-content-between align-items-center">
+                             <span>
+                                 {{ t.name }} {% if t.is_active %}<span class="badge bg-success rounded-pill">Active</span>{% endif %}
+                             </span>
+                             <div>
+                                 <a href="{% url 'edit_team' t.team_id %}" class="btn btn-sm btn-outline-secondary me-2">Edit Name</a>
+                                 <form action="{% url 'delete_team' t.team_id %}" method="POST" class="d-inline" onsubmit="return confirm('Are you sure you want to delete the team \'{{ t.name }}\'?');">
+                                     {% csrf_token %}
+                                     <button type="submit" class="btn btn-sm btn-outline-danger" {% if t.is_active %}disabled title="Cannot delete active team"{% endif %}>Delete</button>
+                                 </form>
+                             </div>
+                         </li>
+                     {% endfor %}
+                 </ul>
+            {% else %}
+                <p>You have not created any teams yet.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if active_team %}
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">Active Team Roster: {{ active_team.name }}</h5>
+        </div>
+        <div class="card-body">
+            <p class="card-text"><strong>Positional Needs:</strong> {{ team_coverage_string }}</p>
+
+            {% if team_roster %}
+                <div class="table-responsive">
+                    <table class="table table-striped table-bordered table-hover table-sm">
+                        <thead class="table-dark">
+                            <tr>
+                                <!-- The table headers are now hard-coded to remove the dependency on the template helper file -->
+                                <th>Name</th>
+                                <th>POS</th>
+                                <th>PTS</th>
+                                <th>REB</th>
+                                <th>AST</th>
+                                <th>FG%</th>
+                                <th>FT%</th>
+                                <th>3PTM</th>
+                                <th>BLK</th>
+                                <th>STL</th>
+                                <th>TOV</th>
+                                <th>Overall Rating</th>
+                                <th>Performance Rating</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if team_averages %}
+                                <tr class="table-info fw-bold">
+                                    <!-- Accessing dictionary keys directly -->
+                                    <td class="{{ team_averages.Name.css_class }}">Team Avg ({{ num_players_on_team }} Players)</td>
+                                    <td class="{{ team_averages.POS.css_class }}"></td>
+                                    <td class="{{ team_averages.PTS_RT.css_class }}">{{ team_averages.PTS_RT.value|floatformat:1 }}</td>
+                                    <td class="{{ team_averages.REB_RT.css_class }}">{{ team_averages.REB_RT.value|floatformat:1 }}</td>
+                                    <td class="{{ team_averages.AST_RT.css_class }}">{{ team_averages.AST_RT.value|floatformat:1 }}</td>
+                                    <td class="{{ team_averages.FGN_RT.css_class }}">{{ team_averages.FGN_RT.value|floatformat:1 }}</td>
+                                    <td class="{{ team_averages.FTN_RT.css_class }}">{{ team_averages.FTN_RT.value|floatformat:1 }}</td>
+                                    <td class="{{ team_averages.FG3M_RT.css_class }}">{{ team_averages.FG3M_RT.value|floatformat:1 }}</td>
+                                    <td class="{{ team_averages.BLK_RT.css_class }}">{{ team_averages.BLK_RT.value|floatformat:1 }}</td>
+                                    <td class="{{ team_averages.STL_RT.css_class }}">{{ team_averages.STL_RT.value|floatformat:1 }}</td>
+                                    <td class="{{ team_averages.TOV_RT.css_class }}">{{ team_averages.TOV_RT.value|floatformat:1 }}</td>
+                                    <td class="{{ team_averages.Total_Rating.css_class }}">{{ team_averages.Total_Rating.value|floatformat:1 }}</td>
+                                    <td class="{{ team_averages.Total_Available_Rating.css_class }}">{{ team_averages.Total_Available_Rating.value|floatformat:1 }}</td>
+                                </tr>
+                            {% endif %}
+                            {% for player_row in team_roster %}
+                                <tr>
+                                    <!-- Accessing dictionary keys directly -->
+                                    <td class="{{ player_row.Name.css_class }}">{{ player_row.Name.value }}</td>
+                                    <td class="{{ player_row.POS.css_class }}">{{ player_row.POS.value }}</td>
+                                    <td class="{{ player_row.PTS_RT.css_class }}">{{ player_row.PTS_RT.value|floatformat:1 }}</td>
+                                    <td class="{{ player_row.REB_RT.css_class }}">{{ player_row.REB_RT.value|floatformat:1 }}</td>
+                                    <td class="{{ player_row.AST_RT.css_class }}">{{ player_row.AST_RT.value|floatformat:1 }}</td>
+                                    <td class="{{ player_row.FGN_RT.css_class }}">{{ player_row.FGN_RT.value|floatformat:1 }}</td>
+                                    <td class="{{ player_row.FTN_RT.css_class }}">{{ player_row.FTN_RT.value|floatformat:1 }}</td>
+                                    <td class="{{ player_row.FG3M_RT.css_class }}">{{ player_row.FG3M_RT.value|floatformat:1 }}</td>
+                                    <td class="{{ player_row.BLK_RT.css_class }}">{{ player_row.BLK_RT.value|floatformat:1 }}</td>
+                                    <td class="{{ player_row.STL_RT.css_class }}">{{ player_row.STL_RT.value|floatformat:1 }}</td>
+                                    <td class="{{ player_row.TOV_RT.css_class }}">{{ player_row.TOV_RT.value|floatformat:1 }}</td>
+                                    <td class="{{ player_row.Total_Rating.css_class }}">{{ player_row.Total_Rating.value|floatformat:1 }}</td>
+                                    <td class="{{ player_row.Total_Available_Rating.css_class }}">{{ player_row.Total_Available_Rating.value|floatformat:1 }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <p>This team has no players on its roster. Go to the <a href="{% url 'show_ratings' %}">Ratings</a> page to add players.</p>
+            {% endif %}
+        </div>
+    </div>
+    {% else %}
+        <div class="alert alert-warning" role="alert">
+            No active team selected. Please create a team or set one as active to see its roster.
+        </div>
+    {% endif %}
 </div>
-
-<div class="auth-container">
-    <form method="post" action="{% url 'create_team' %}" class="auth-form">
-        {% csrf_token %}
-        <h2>Create Team</h2>
-        <p>
-            <label for="name">Team Name:</label><br>
-            <input type="text" id="name" name="name" required>
-        </p>
-        <button type="submit">Create Team</button>
-    </form>
-</div>
-
 {% endblock %}

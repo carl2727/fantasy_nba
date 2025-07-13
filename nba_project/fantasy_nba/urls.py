@@ -8,9 +8,10 @@ urlpatterns = [
     path('breakdown/', views.breakdown, name='breakdown'),
     path('team/', views.team, name='team'),
     path('create_team/', views.create_team, name='create_team'),
+    path('team/<int:team_id>/edit/', views.edit_team, name='edit_team'),
+    path('team/<int:team_id>/delete/', views.delete_team, name='delete_team'),
     path('update_player_status/', views.update_player_status, name='update_player_status'),
     
-    # Authentication related URLs
     path('accounts/logout/', views.logout_view, name='logout'),
     path('accounts/login_register/', views.login_register, name='login_register'),
     path('accounts/', include('django.contrib.auth.urls')),

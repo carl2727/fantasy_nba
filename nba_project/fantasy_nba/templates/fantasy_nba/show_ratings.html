@@ -73,17 +73,21 @@
                     {% for column_actual_name, column_display_name_val in column_display_names.items %}
                         {% with cell_data=row|get_item:column_actual_name %} {# Each cell_data is {'value': ..., 'css_class': ...} #}
                             <td data-column-key="{{ column_actual_name }}" class="{% if cell_data.css_class %}{{ cell_data.css_class }}{% endif %}{% if column_actual_name == 'Status' %} player-status-cell{% endif %}{% if column_actual_name == 'Player_ID' %} column-hidden-player-id{% endif %}">
-                                {% if column_actual_name == "Name" or column_actual_name == "Player_ID" or column_actual_name == "TEAM_ID" or column_actual_name == "Status" or column_actual_name == "POS" %}
+                                {% if player_id_val == 'TEAM_AVERAGE_ROW' and column_actual_name == "Name" %}
+                                    {# 1. Bold Team Name #}
+                                    <strong>{{ cell_data.value }}</strong>
+                                {% elif column_actual_name == "Name" or column_actual_name == "Player_ID" or column_actual_name == "TEAM_ID" or column_actual_name == "Status" or column_actual_name == "POS" %}
                                     {{ cell_data.value }}
                                 {% else %}
                                     {{ cell_data.value|floatformat:2|default:"N/A" }}
                                 {% endif %}
                             </td>
-                        {% endwith %}
+                        {% endwith %} {# This was missing, closes the 'with cell_data' block #}
                     {% endfor %}
                     <td>
                         {% if player_id_val == 'TEAM_AVERAGE_ROW' %}
-                            N/A {# No actions for the team average row #}
+                            {# 3. Empty Actions cell for team average row #}
+                            
                         {% else %}
                             {# Add a class to the forms for easier selection in JS #}
                             {% if user.is_authenticated and active_team %}

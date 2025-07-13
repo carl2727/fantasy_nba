@@ -4,13 +4,13 @@ from django.contrib import messages
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.contrib.auth import login, authenticate, logout
 from django.contrib.auth.decorators import login_required
-from django.shortcuts import render, redirect,  get_object_or_404
+from django.shortcuts import render, redirect, get_object_or_404
 from django.http import HttpRequest, JsonResponse, Http404
-from . import ratings as ratings_data_module # Renamed to avoid conflict with 'ratings' variable
+from . import ratings as ratings_data_module
 from .models import *
 from django.db import transaction
-from .forms import MinimalUserCreationForm
-from django.conf import settings # For accessing BASE_DIR
+from .forms import MinimalUserCreationForm, TeamNameForm
+from django.conf import settings
 import pandas as pd
 import logging
 import os
@@ -19,7 +19,7 @@ import os
 logger = logging.getLogger(__name__)
 COLUMN_DISPLAY_NAMES = {
     'Name': 'Name',
-    'POS': 'POS', # New Position Column
+    'POS': 'POS',
     'PTS_RT': 'PTS',
     'REB_RT': 'REB',
     'AST_RT': 'AST',
@@ -205,17 +205,17 @@ def _get_team_position_coverage(active_team, fantasy_positions_map):
     Returns a string detailing covered and missing positions.
     """
     if not active_team:
-        return "No active team selected."
+        return "No active team selected." # Should not happen if called correctly
 
-    on_team_player_ids = list(
+    on_team_player_ids_str = list(
         TeamPlayer.objects.filter(team=active_team, status='ON_TEAM').values_list('player_id', flat=True)
     )
 
-    if not on_team_player_ids:
+    if not on_team_player_ids_str:
         return "Missing positions: PG, SG, G, SF, PF, F, C, C"
 
     players_on_team_with_pos = []
-    for player_id in on_team_player_ids:
+    for player_id in on_team_player_ids_str:
         # Ensure player_id is an int for lookup, as fantasy_positions_map uses int keys
         try:
             pid_int = int(float(player_id))
@@ -262,16 +262,11 @@ def _get_team_position_coverage(active_team, fantasy_positions_map):
     # should be a good heuristic for typical fantasy scenarios.
     # The current sorting helps by trying to fill specific needs first.
 
-    # Determine display status
-    position_display_statuses = []
+    # Determine coverage for each core and derived position
     pg_covered = filled_core_slots_count['PG'] >= CORE_POSITIONS_ROSTER_NEEDS['PG']
     sg_covered = filled_core_slots_count['SG'] >= CORE_POSITIONS_ROSTER_NEEDS['SG']
     sf_covered = filled_core_slots_count['SF'] >= CORE_POSITIONS_ROSTER_NEEDS['SF']
     pf_covered = filled_core_slots_count['PF'] >= CORE_POSITIONS_ROSTER_NEEDS['PF']
-    
-    # For C, we need to track C1 and C2 separately for display
-    c1_covered = filled_core_slots_count['C'] >= 1
-    c2_covered = filled_core_slots_count['C'] >= 2
 
     g_covered = pg_covered or sg_covered
     f_covered = sf_covered or pf_covered
@@ -279,28 +274,47 @@ def _get_team_position_coverage(active_team, fantasy_positions_map):
     for slot in DESIRED_POSITIONS_ORDER:
         status = "missing"
         if slot == 'PG':
-            if pg_covered: status = "covered"
+            if pg_covered: status = "covered" # Not used in new format, but shows logic
         elif slot == 'SG':
-            if sg_covered: status = "covered"
+            if sg_covered: status = "covered" # Not used
         elif slot == 'G':
-            if g_covered: status = "covered"
+            if g_covered: status = "covered" # Not used
         elif slot == 'SF':
-            if sf_covered: status = "covered"
+            if sf_covered: status = "covered" # Not used
         elif slot == 'PF':
-            if pf_covered: status = "covered"
+            if pf_covered: status = "covered" # Not used
         elif slot == 'F':
-            if f_covered: status = "covered"
+            if f_covered: status = "covered" # Not used
         elif slot == 'C': # This will be called twice for the two 'C' slots
-            if c1_covered:
-                status = "covered"
-                c1_covered = False # Mark as used for the first C slot display
-            elif c2_covered: # Check if the second C slot can be marked
-                status = "covered"
-                c2_covered = False # Mark as used for the second C slot display
+            # Logic for C handled below in missing_display_parts
+            pass
         
-        position_display_statuses.append(f"{slot} ({status})")
+    # Build the "Missing Positions" string
+    missing_display_parts = []
+    c_slots_in_desired_order_accounted_for = 0 # To track how many 'C' slots from DESIRED_POSITIONS_ORDER we've checked
 
-    return ", ".join(position_display_statuses)
+    for slot_type in DESIRED_POSITIONS_ORDER:
+        is_this_slot_type_missing = True 
+        if slot_type == 'PG' and pg_covered: is_this_slot_type_missing = False
+        elif slot_type == 'SG' and sg_covered: is_this_slot_type_missing = False
+        elif slot_type == 'G' and g_covered: is_this_slot_type_missing = False
+        elif slot_type == 'SF' and sf_covered: is_this_slot_type_missing = False
+        elif slot_type == 'PF' and pf_covered: is_this_slot_type_missing = False
+        elif slot_type == 'F' and f_covered: is_this_slot_type_missing = False
+        elif slot_type == 'C':
+            c_slots_in_desired_order_accounted_for += 1
+            if filled_core_slots_count['C'] >= c_slots_in_desired_order_accounted_for:
+                is_this_slot_type_missing = False
+            
+        if is_this_slot_type_missing:
+            missing_display_parts.append(slot_type)
+
+    if not on_team_player_ids_str: # Corrected variable name
+        return f"Missing Positions: {', '.join(DESIRED_POSITIONS_ORDER)}"
+    if not missing_display_parts:
+        return "All positions covered."
+    else:
+        return f"Missing Positions: {', '.join(missing_display_parts)}"
 
 def show_ratings(request: HttpRequest):
     # ... (existing code for ratings_df, current_status_filter, fantasy_positions_map, sorting) ...
@@ -424,10 +438,14 @@ def show_ratings(request: HttpRequest):
             'value': f"Team Avg ({num_players_on_team_calc} Player{'s' if num_players_on_team_calc != 1 else ''})",
             'css_class': None 
         }
+        # For point 2: Ensure POS cell is empty for team average row
+        if 'POS' in final_column_display_names:
+            team_average_row_for_table['POS'] = {'value': '', 'css_class': None}
 
         for col_key, styled_value_dict in styled_team_averages_dict.items():
             team_average_row_for_table[col_key] = styled_value_dict
         
+        # Fill any remaining columns that weren't part of averages or explicitly set
         for col_key in final_column_display_names.keys():
             if col_key not in team_average_row_for_table:
                 team_average_row_for_table[col_key] = {'value': "N/A", 'css_class': None}
@@ -483,14 +501,16 @@ def _get_styled_team_averages_and_count(ratings_df, active_team, final_column_di
     ]
 
     team_ratings_df = ratings_df[ratings_df['Player_ID'].isin(on_team_player_ids)]
-
+    
+    # If team_ratings_df is empty but there are players (e.g., players with no stats), style with None
     if team_ratings_df.empty and num_players_on_team > 0: 
         return _style_single_row_data({col: None for col in cols_for_averaging}, cols_for_averaging), num_players_on_team
 
     team_averages_raw = {col: team_ratings_df[col].mean() if col in team_ratings_df else None for col in cols_for_averaging}
-    styled_team_averages = _style_single_row_data(team_averages_raw, cols_for_averaging)
+    # For point 4: Modify the call to _style_single_row_data to use STYLED_COLUMNS
+    # This ensures only base stat columns get color-coding for the team average row.
+    styled_team_averages = _style_single_row_data(team_averages_raw, STYLED_COLUMNS)
     return styled_team_averages, num_players_on_team
-
 
 def _get_value_based_css_class(value):
     """Determines CSS class based on fixed value thresholds.
@@ -588,6 +608,7 @@ def create_team(request):
 @login_required
 def team(request):
     teams = Team.objects.filter(creator=request.user)
+    active_team = teams.filter(is_active=True).first()
 
     if request.method == 'POST':
         team_id = request.POST.get('team_id')
@@ -603,9 +624,85 @@ def team(request):
             return redirect('team')
         else:
             messages.error(request, "No team selected to activate.")
+
+    team_roster_data = []
+    team_averages = None
+    team_coverage_string = "No active team selected."
+    num_players_on_team = 0
+    final_column_display_names = _get_final_column_display_names(request.session, ratings_data_module.ratings.columns)
+
+    if active_team:
+        on_team_player_ids = list(TeamPlayer.objects.filter(team=active_team, status='ON_TEAM').values_list('player_id', flat=True))
+        num_players_on_team = len(on_team_player_ids)
+
+        ratings_df = ratings_data_module.ratings.copy()
+        fantasy_positions_map = _load_fantasy_positions_data()
+
+        if num_players_on_team > 0:
+            team_roster_df = ratings_df[ratings_df['Player_ID'].isin(on_team_player_ids)]
+            roster_list = []
+            for record in team_roster_df.to_dict('records'):
+                player_id_val = record.get('Player_ID')
+                try:
+                    pid_int = int(float(player_id_val))
+                    positions = fantasy_positions_map.get(pid_int, [])
+                    record['POS'] = ", ".join(positions) if positions else "N/A"
+                except (ValueError, TypeError):
+                    record['POS'] = "N/A"
+                roster_list.append(record)
             
-    active_team = teams.filter(is_active=True).first()
-    return render(request, 'fantasy_nba/team.html', {'teams': teams, 'active_team': active_team})
+            team_roster_data = _apply_styles_to_data(roster_list, STYLED_COLUMNS)
+            team_averages, _ = _get_styled_team_averages_and_count(ratings_df, active_team, final_column_display_names)
+
+        team_coverage_string = _get_team_position_coverage(active_team, fantasy_positions_map)
+
+    context = {
+        'teams': teams,
+        'active_team': active_team,
+        'team_roster': team_roster_data,
+        'team_averages': team_averages,
+        'team_coverage_string': team_coverage_string,
+        'num_players_on_team': num_players_on_team,
+        'column_display_names': final_column_display_names,
+    }
+    return render(request, 'fantasy_nba/team.html', context)
+
+@login_required
+def delete_team(request, team_id):
+    """
+    Handles the deletion of a team.
+    """
+    team_to_delete = get_object_or_404(Team, team_id=team_id, creator=request.user)
+
+    if team_to_delete.is_active:
+        messages.error(request, "You cannot delete an active team. Please activate another team first.")
+        return redirect('team')
+
+    if request.method == 'POST':
+        team_name = team_to_delete.name
+        team_to_delete.delete()
+        messages.success(request, f"Team '{team_name}' has been deleted.")
+    
+    return redirect('team')
+
+@login_required
+def edit_team(request, team_id):
+    """
+    Handles editing a team's name.
+    """
+    team_to_edit = get_object_or_404(Team, team_id=team_id, creator=request.user)
+    
+    if request.method == 'POST':
+        form = TeamNameForm(request.POST, instance=team_to_edit)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f"Team name updated to '{team_to_edit.name}'.")
+            return redirect('team')
+    else:
+        form = TeamNameForm(instance=team_to_edit)
+
+    return render(request, 'fantasy_nba/edit_team.html', {'form': form, 'team': team_to_edit})
+
 
 @login_required
 def update_player_status(request):
@@ -712,4 +809,5 @@ def toggle_availability(request):
 
 def logout_view(request):
     logout(request)
-    return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=405)
+    messages.info(request, "You have been successfully logged out.")
+    return redirect('login_register')
