@@ -14,11 +14,31 @@
 <head>
 </head>
 <body>
-    <h1 class="header-big">Ratings</h1>
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert {% if message.tags %}alert-{{ message.tags }}{% else %}alert-info{% endif %} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
 
-    {% if active_team %}
-    <div id="team-position-coverage-container" style="margin-bottom: 10px; padding: 10px; border: 1px solid #ccc; background-color: #f9f9f9; font-size: 0.9em;">
-        <strong>Position Coverage:</strong> <span id="position-coverage-text">{{ team_coverage_string|default:"Calculating..." }}</span>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2>Player Ratings</h2>
+    </div>
+
+    {% if active_team or punt_categories_string %}
+    <div id="team-info-container" style="margin-bottom: 10px; padding: 10px; border: 1px solid #ccc; background-color: #f9f9f9; font-size: 0.9em;">
+        {% if active_team %}
+        <div style="margin-bottom: 5px;">
+            <strong>Missing positions:</strong> <span id="position-coverage-text">{{ team_coverage_string|default:"Calculating..." }}</span>
+        </div>
+        {% endif %}
+        {% if punt_categories_string %}
+        <div>
+            {{ punt_categories_string }}
+        </div>
+        {% endif %}
     </div>
     {% endif %}
 
@@ -56,7 +76,7 @@
                 {% endfor %}
                 <th>
                     {% if active_team %}
-                        Actions <!-- Changed from active_team.name for clarity -->
+                        Actions
                     {% else %}
                         Tools
                     {% endif %}
@@ -72,7 +92,8 @@
                 <tr data-player-id="{{ player_id_val }}">
                     {% for column_actual_name, column_display_name_val in column_display_names.items %}
                         {% with cell_data=row|get_item:column_actual_name %} {# Each cell_data is {'value': ..., 'css_class': ...} #}
-                            <td data-column-key="{{ column_actual_name }}" class="{% if cell_data.css_class %}{{ cell_data.css_class }}{% endif %}{% if column_actual_name == 'Status' %} player-status-cell{% endif %}{% if column_actual_name == 'Player_ID' %} column-hidden-player-id{% endif %}">
+                            <td data-column-key="{{ column_actual_name }}"
+                                class="{% if enable_heatmap and cell_data.css_class %}{{ cell_data.css_class }}{% endif %}{% if column_actual_name == 'Status' %} player-status-cell{% endif %}{% if column_actual_name == 'Player_ID' %} column-hidden-player-id{% endif %}">
                                 {% if player_id_val == 'TEAM_AVERAGE_ROW' and column_actual_name == "Name" %}
                                     {# 1. Bold Team Name #}
                                     <strong>{{ cell_data.value }}</strong>

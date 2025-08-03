@@ -30,25 +30,6 @@
         <div class="card-body">
             <h5 class="card-title">Your Teams</h5>
             {% if teams %}
-                 <form method="POST" action="{% url 'team' %}" class="row g-3 align-items-center mb-3">
-                     {% csrf_token %}
-                     <div class="col-auto">
-                         <label for="team_id" class="col-form-label">Select Active Team:</label>
-                     </div>
-                     <div class="col-auto">
-                         <select name="team_id" id="team_id" class="form-select">
-                             {% for t in teams %}
-                                <option value="{{ t.team_id }}" {% if active_team and active_team.team_id == t.team_id %}selected{% endif %}>
-                                    {{ t.name }}
-                                </option>
-                             {% endfor %}
-                         </select>
-                     </div>
-                     <div class="col-auto">
-                         <button type="submit" class="btn btn-success">Activate</button>
-                     </div>
-                 </form>
-                 <hr>
                  <ul class="list-group list-group-flush">
                      {% for t in teams %}
                          <li class="list-group-item d-flex justify-content-between align-items-center">
@@ -56,6 +37,9 @@
                                  {{ t.name }} {% if t.is_active %}<span class="badge bg-success rounded-pill">Active</span>{% endif %}
                              </span>
                              <div>
+                                 {% if not t.is_active %}
+                                     <a href="{% url 'activate_team' t.team_id %}" class="btn btn-sm btn-success me-2">Activate</a>
+                                 {% endif %}
                                  <a href="{% url 'edit_team' t.team_id %}" class="btn btn-sm btn-outline-secondary me-2">Edit Name</a>
                                  <form action="{% url 'delete_team' t.team_id %}" method="POST" class="d-inline" onsubmit="return confirm('Are you sure you want to delete the team \'{{ t.name }}\'?');">
                                      {% csrf_token %}

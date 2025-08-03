@@ -64,7 +64,9 @@ def _get_default_columns():
     return default_cols
     
 RATING_CHOICES = [
-    (key, COLUMN_DISPLAY_NAMES[key].replace('_RT', '')) for key in COLUMN_DISPLAY_NAMES if key not in ['Name', 'Total_Rating', 'Total_Available_Rating']
+    (key, COLUMN_DISPLAY_NAMES[key].replace('_RT', ''))
+    for key in COLUMN_DISPLAY_NAMES
+    if key not in ['Name', 'Total_Rating', 'Total_Available_Rating', 'Player_ID']
 ]
 
 STATUS_FILTER_CHOICES = [
@@ -139,25 +141,30 @@ def _get_final_column_display_names(session_data, all_rating_columns):
 
     punted_categories = session_data.get('punted_categories', [])
 
+    # Remove punted categories from display
+    for category in punted_categories:
+        if category in final_names:
+            del final_names[category]
+
     if punted_categories:
         punt_suffix = "_Punt_" + "_".join(sorted([cat.replace('_RT', '') for cat in punted_categories]))
         punt_perf_col_actual_name_candidate = f'Total{punt_suffix}_Available_Rating'
         punt_overall_col_actual_name_candidate = f'Total{punt_suffix}_Rating'
 
-        punted_display_names_list = [COLUMN_DISPLAY_NAMES[cat].replace('_RT', '') for cat in punted_categories]
-        punted_cats_formatted_for_display = ""
-        if len(punted_display_names_list) == 1:
-            punted_cats_formatted_for_display = punted_display_names_list[0]
-        elif len(punted_display_names_list) == 2:
-            punted_cats_formatted_for_display = f"{punted_display_names_list[0]} & {punted_display_names_list[1]}"
-        else: 
-            punted_cats_formatted_for_display = ", ".join(punted_display_names_list)
-
+        # Check if punt-specific ratings exist and replace the standard ratings
         if punt_perf_col_actual_name_candidate in all_rating_columns:
-            final_names[punt_perf_col_actual_name_candidate] = f"Performance Rating (Punt {punted_cats_formatted_for_display})"
+            # Replace the standard Performance Rating with the punt-specific one
+            final_names[punt_perf_col_actual_name_candidate] = "Performance Rating"
+            # Remove the standard Performance Rating from display
+            if 'Total_Available_Rating' in final_names:
+                del final_names['Total_Available_Rating']
 
         if punt_overall_col_actual_name_candidate in all_rating_columns:
-            final_names[punt_overall_col_actual_name_candidate] = f"Overall Rating (Punt {punted_cats_formatted_for_display})"
+            # Replace the standard Overall Rating with the punt-specific one
+            final_names[punt_overall_col_actual_name_candidate] = "Overall Rating"
+            # Remove the standard Overall Rating from display
+            if 'Total_Rating' in final_names:
+                del final_names['Total_Rating']
 
     final_names['Status'] = 'Status'
     return final_names
@@ -170,34 +177,54 @@ def _extract_columns_for_display(final_column_display_names_map, all_rating_colu
     """
     return [key for key in final_column_display_names_map.keys() if key in all_rating_columns or key in ['Name', 'Player_ID', 'Status']]
 
+class SettingsForm(forms.Form):
+    enable_heatmap = forms.BooleanField(
+        required=False,
+        label='Heatmap'
+    )
+
 class PuntForm(forms.Form):
     punt_category_1 = forms.ChoiceField(
-        choices=[('', '---')] + RATING_CHOICES,
+        choices=[('', '-')] + RATING_CHOICES,
         required=False,
         label='Punt Category 1'
     )
     punt_category_2 = forms.ChoiceField(
-        choices=[('', '---')] + RATING_CHOICES,
+        choices=[('', '-')] + RATING_CHOICES,
         required=False,
         label='Punt Category 2'
     )
 
 def punt(request: HttpRequest):
     if request.method == 'POST':
-        form = PuntForm(request.POST)
-        if form.is_valid():
-            punted_categories = [
-                form.cleaned_data['punt_category_1'],
-                form.cleaned_data['punt_category_2'],
-            ]
-            punted_categories = [cat for cat in punted_categories if cat]
-
-            request.session['punted_categories'] = punted_categories
-            return redirect('show_ratings')
-
+        if 'save_punt' in request.POST:
+            punt_form = PuntForm(request.POST)
+            settings_form = SettingsForm(initial={'enable_heatmap': request.session.get('enable_heatmap', False)})
+            if punt_form.is_valid():
+                punted_categories = [
+                    punt_form.cleaned_data['punt_category_1'],
+                    punt_form.cleaned_data['punt_category_2'],
+                ]
+                punted_categories = [cat for cat in punted_categories if cat]
+                request.session['punted_categories'] = punted_categories
+                return redirect('show_ratings')
+        elif 'save_settings' in request.POST:
+            settings_form = SettingsForm(request.POST)
+            punt_form = PuntForm(initial={
+                'punt_category_1': request.session.get('punted_categories', ['',''])[0] if request.session.get('punted_categories') else '',
+                'punt_category_2': request.session.get('punted_categories', ['',''])[1] if len(request.session.get('punted_categories', [])) > 1 else '',
+            })
+            if settings_form.is_valid():
+                request.session['enable_heatmap'] = settings_form.cleaned_data.get('enable_heatmap', False)
+                return redirect('show_ratings')
     else:
-        form = PuntForm()
-        return render(request, 'fantasy_nba/punt.html', {'form': form})
+        punted = request.session.get('punted_categories', [])
+        punt_form = PuntForm(initial={
+            'punt_category_1': punted[0] if len(punted) > 0 else '',
+            'punt_category_2': punted[1] if len(punted) > 1 else '',
+        })
+        settings_form = SettingsForm(initial={'enable_heatmap': request.session.get('enable_heatmap', False)})
+    return render(request, 'fantasy_nba/punt.html', {'form': punt_form, 'settings_form': settings_form})
 
 def _get_team_position_coverage(active_team, fantasy_positions_map):
     """
@@ -212,7 +239,7 @@ def _get_team_position_coverage(active_team, fantasy_positions_map):
     )
 
     if not on_team_player_ids_str:
-        return "Missing positions: PG, SG, G, SF, PF, F, C, C"
+        return "PG, SG, G, SF, PF, F, C, C"
 
     players_on_team_with_pos = []
     for player_id in on_team_player_ids_str:
@@ -310,11 +337,35 @@ def _get_team_position_coverage(active_team, fantasy_positions_map):
             missing_display_parts.append(slot_type)
 
     if not on_team_player_ids_str: # Corrected variable name
-        return f"Missing Positions: {', '.join(DESIRED_POSITIONS_ORDER)}"
+        return f"{', '.join(DESIRED_POSITIONS_ORDER)}"
     if not missing_display_parts:
         return "All positions covered."
     else:
-        return f"Missing Positions: {', '.join(missing_display_parts)}"
+        return f"{', '.join(missing_display_parts)}"
+
+def _get_punt_categories_string(session_data):
+    """
+    Generates a string showing the punt categories if any are set.
+    Returns a formatted string like "Punt categories: STL, BLK" or None if no punt categories.
+    """
+    punted_categories = session_data.get('punted_categories', [])
+    
+    if not punted_categories:
+        return None
+    
+    # Convert category codes to display names
+    punted_display_names = []
+    for cat in punted_categories:
+        if cat in COLUMN_DISPLAY_NAMES:
+            display_name = COLUMN_DISPLAY_NAMES[cat].replace('_RT', '')
+            punted_display_names.append(display_name)
+    
+    if len(punted_display_names) == 1:
+        return f"Punt categories: {punted_display_names[0]}"
+    elif len(punted_display_names) == 2:
+        return f"Punt categories: {punted_display_names[0]}, {punted_display_names[1]}"
+    else:
+        return f"Punt categories: {', '.join(punted_display_names)}"
 
 def show_ratings(request: HttpRequest):
     # ... (existing code for ratings_df, current_status_filter, fantasy_positions_map, sorting) ...
@@ -375,6 +426,8 @@ def show_ratings(request: HttpRequest):
             on_team_player_ids = set(tp.player_id for tp in team_player_entries if tp.status == 'ON_TEAM')
             team_coverage_string = _get_team_position_coverage(active_team, fantasy_positions_map)
 
+    # Generate punt categories string
+    punt_categories_string = _get_punt_categories_string(request.session)
 
     initial_data_list = []
     for record in ratings_df.to_dict('records'):
@@ -462,6 +515,8 @@ def show_ratings(request: HttpRequest):
         'sort_by': active_sort_column,
         'sort_direction': active_sort_direction,
         'team_coverage_string': team_coverage_string, # Add to context
+        'punt_categories_string': punt_categories_string, # Add punt categories to context
+        'enable_heatmap': request.session.get('enable_heatmap', False),
     }
     return render(request, 'fantasy_nba/show_ratings.html', context)
 
@@ -610,21 +665,6 @@ def team(request):
     teams = Team.objects.filter(creator=request.user)
     active_team = teams.filter(is_active=True).first()
 
-    if request.method == 'POST':
-        team_id = request.POST.get('team_id')
-        if team_id:
-            Team.objects.filter(creator=request.user).update(is_active=False)
-            try:
-                team_to_activate = get_object_or_404(Team, team_id=team_id, creator=request.user)
-                team_to_activate.is_active = True
-                team_to_activate.save()
-                messages.success(request, f"Team '{team_to_activate.name}' is now active.")
-            except Http404:
-                messages.error(request, "Failed to activate team. Team not found.")
-            return redirect('team')
-        else:
-            messages.error(request, "No team selected to activate.")
-
     team_roster_data = []
     team_averages = None
     team_coverage_string = "No active team selected."
@@ -702,6 +742,23 @@ def edit_team(request, team_id):
         form = TeamNameForm(instance=team_to_edit)
 
     return render(request, 'fantasy_nba/edit_team.html', {'form': form, 'team': team_to_edit})
+
+@login_required
+def activate_team(request, team_id):
+    """
+    Handles activating a team.
+    """
+    team_to_activate = get_object_or_404(Team, team_id=team_id, creator=request.user)
+    
+    # Deactivate all other teams
+    Team.objects.filter(creator=request.user).update(is_active=False)
+    
+    # Activate the selected team
+    team_to_activate.is_active = True
+    team_to_activate.save()
+    
+    messages.success(request, f"Team '{team_to_activate.name}' is now active.")
+    return redirect('team')
 
 
 @login_required

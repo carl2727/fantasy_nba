@@ -286,3 +286,29 @@ nav ul li a:focus {
     margin-top: 0.5rem;    /* Optional: add some top margin if needed */
     margin-bottom: 0.5rem; /* Optional: add some bottom margin if needed */
 }
+
+.styled-table tbody tr:nth-child(even) {
+    background-color: #ededed;
+}
+.styled-table tbody tr:nth-child(odd) {
+    background-color: #f7f7f7;
+}
+.styled-table tbody tr:hover {
+    background-color: #d0d0d0;
+    transition: background 0.2s;
+}
+.styled-table th, .styled-table td {
+    padding: 6px 8px;
+    font-size: 0.95em;
+    height: 32px;
+}
+.styled-table th {
+    height: 34px;
+    font-size: 1em;
+}
+
+.styled-table tr, .styled-table th, .styled-table td, .styled-table tr.table-info {
+    height: 32px;
+    min-height: 32px;
+    max-height: 32px;
+}

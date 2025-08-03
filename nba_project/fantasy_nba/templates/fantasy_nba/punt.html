@@ -1,41 +1,64 @@
 {% extends 'fantasy_nba/base.html' %}
 {% load extras %}
-{% block content %}
-    <h1 class="header-big">Punt Categories</h1>
 
-    <div class="form-wrapper">
-        <form method="post">
-            {% csrf_token %}
-            {{ form.as_p }}
-            <button type="submit">Show Punt Ratings</button>
-        </form>
+{% block title %}Settings - Fantasy NBA Assistant{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert {% if message.tags %}alert-{{ message.tags }}{% else %}alert-info{% endif %} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2>Settings</h2>
     </div>
 
-    {% if punted_categories %}
-        <h2>Punting: {% for cat in punted_categories %}{{ cat }}{% if not forloop.last %}, {% endif %}{% endfor %}</h2>
-    {% endif %}
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Punt Categories</h5>
+        </div>
+        <div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="{{ form.punt_category_1.id_for_label }}" class="form-label">{{ form.punt_category_1.label }}</label>
+                        {{ form.punt_category_1 }}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="{{ form.punt_category_2.id_for_label }}" class="form-label">{{ form.punt_category_2.label }}</label>
+                        {{ form.punt_category_2 }}
+                    </div>
+                </div>
+                <button type="submit" name="save_punt" class="btn btn-primary">Save Punt Settings</button>
+            </form>
+        </div>
+    </div>
 
-    {% if punt_ratings %}
-        <table>
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Punt Performance Rating</th>
-                    </tr>
-            </thead>
-            <tbody>
-                {% for row in punt_ratings %}
-                    <tr>
-                        <td>{{ row.Name }}</td>
-                        <td>{{ row.Punt_Available_Rating|floatformat:2 }}</td>
-                        </tr>
-                {% empty %}
-                    <tr><td colspan="2">No players match this punt strategy.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    {% elif request.method == 'POST' %}
-        <p>No punt strategy selected. Showing overall ratings.</p>
-    {% endif %}
-
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">Display Settings</h5>
+        </div>
+        <div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <div class="form-check">
+                        {{ settings_form.enable_heatmap }}
+                        <label class="form-check-label" for="{{ settings_form.enable_heatmap.id_for_label }}">
+                            {{ settings_form.enable_heatmap.label }}
+                        </label>
+                    </div>
+                </div>
+                <button type="submit" name="save_settings" class="btn btn-primary">Save Display Settings</button>
+            </form>
+        </div>
+    </div>
+</div>
 {% endblock %}
