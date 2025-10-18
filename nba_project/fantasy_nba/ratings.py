@@ -4,15 +4,82 @@ from .games_played import calculate_player_availability_score
 from .helpers import normalize
 from .weeks import calculate_games_per_week
 import itertools
+import os
+from datetime import datetime
+
+CURRENT_SEASON = "2025-2026"
+PREVIOUS_SEASON = "2024-2025"
+TOTAL_GAMES_PER_SEASON = 82
 
 # Define columns
 categories = ['FGN', 'FTN', 'PTS', 'FG3M', 'REB', 'BLK', 'STL', 'AST', 'TOV']
 rating_columns = ['FGN_RT', 'FTN_RT', 'FG3M_RT', 'PTS_RT', 'REB_RT', 'AST_RT', 'BLK_RT', 'STL_RT','TOV_RT']
 
+def calculate_games_played_per_team(current_season_stats):
+    """
+    Berechnet die Anzahl der gespielten Spiele pro Team in der aktuellen Saison.
+    """
+    if current_season_stats.empty:
+        return {}
+    
+    # Zähle einzigartige Spiele pro Team
+    games_played = {}
+    for team_id in current_season_stats['TEAM_ID'].unique():
+        team_games = current_season_stats[current_season_stats['TEAM_ID'] == team_id]
+        unique_games = team_games['Game_ID'].nunique()
+        games_played[team_id] = unique_games
+    
+    return games_played
+
+def calculate_weighting_factor(games_played, team_id):
+    """
+    Berechnet den Gewichtungsfaktor basierend auf der Anzahl der gespielten Spiele.
+    """
+    if team_id not in games_played:
+        return 1.0  # Falls keine Daten verfügbar, verwende nur vergangene Saison
+    
+    games = games_played[team_id]
+    if games == 0:
+        return 1.0  # Keine Spiele gespielt, verwende nur vergangene Saison
+    
+    # Gewichtungsfaktor: (82 - gespielte Spiele) / 82
+    weighting_factor = (TOTAL_GAMES_PER_SEASON - games) / TOTAL_GAMES_PER_SEASON
+    return max(0.0, weighting_factor)  # Mindestens 0.0
+
 # Load data
-game_stats_file = "data/all_player_game_stats_2024_2025.csv"
+game_stats_files = [
+    "data/all_player_game_stats_2024_2025.csv",
+    "data/all_player_game_stats_2025_2026.csv"
+]
 players_file = "data/nba_players.csv"
-game_stats = pd.read_csv(game_stats_file)
+
+# Load and combine game stats from multiple seasons
+game_stats_list = []
+current_season_stats = None
+previous_season_stats = None
+
+for file_path in game_stats_files:
+    try:
+        season_stats = pd.read_csv(file_path)
+        # Add season identifier
+        if "2024_2025" in file_path:
+            season_stats['Season'] = PREVIOUS_SEASON
+            previous_season_stats = season_stats
+        elif "2025_2026" in file_path:
+            season_stats['Season'] = CURRENT_SEASON
+            current_season_stats = season_stats
+        game_stats_list.append(season_stats)
+        print(f"Successfully loaded {file_path}")
+    except FileNotFoundError:
+        print(f"File not found: {file_path} - skipping")
+    except Exception as e:
+        print(f"Error loading {file_path}: {e} - skipping")
+
+if not game_stats_list:
+    raise FileNotFoundError("No game stats files could be loaded")
+
+# Combine all seasons for initial processing
+game_stats = pd.concat(game_stats_list, ignore_index=True)
 players = pd.read_csv(players_file)
 
 # Preprocess data
@@ -32,8 +99,88 @@ players['PERSON_ID'] = players['PERSON_ID'].astype(int)
 columns_to_drop_from_game_stats = ['Game_ID', 'FG_PCT', 'FG3_PCT', 'FT_PCT', 'VIDEO_AVAILABLE']
 game_stats.drop(columns=[col for col in columns_to_drop_from_game_stats if col in game_stats.columns], inplace=True)
 
-numeric_columns = game_stats.select_dtypes(include='number').columns
-game_stats = game_stats.groupby('Player_ID', as_index=False)[numeric_columns].mean() # .reset_index() is redundant with as_index=False
+# Calculate games played per team in current season
+games_played_per_team = {}
+if current_season_stats is not None:
+    games_played_per_team = calculate_games_played_per_team(current_season_stats)
+    print(f"Games played per team: {games_played_per_team}")
+
+# Process previous season data
+previous_season_processed = None
+if previous_season_stats is not None:
+    previous_season_processed = previous_season_stats.groupby('Player_ID', as_index=False)[
+        previous_season_stats.select_dtypes(include='number').columns
+    ].mean()
+
+# Process current season data
+current_season_processed = None
+if current_season_stats is not None:
+    current_season_processed = current_season_stats.groupby('Player_ID', as_index=False)[
+        current_season_stats.select_dtypes(include='number').columns
+    ].mean()
+
+# Combine data with weighting
+if previous_season_processed is not None and current_season_processed is not None:
+    # Merge both seasons
+    combined_stats = pd.merge(
+        previous_season_processed, 
+        current_season_processed, 
+        on='Player_ID', 
+        suffixes=('_prev', '_curr'),
+        how='outer'
+    )
+    
+    # Get numeric columns for processing
+    numeric_columns = [col for col in combined_stats.columns if col not in ['Player_ID', 'Season_prev', 'Season_curr']]
+    
+    # Create weighted averages for each player
+    weighted_stats = []
+    
+    for _, player_row in combined_stats.iterrows():
+        player_id = player_row['Player_ID']
+        team_id = player_row.get('TEAM_ID_curr', player_row.get('TEAM_ID_prev'))
+        
+        # Calculate weighting factor for this player's team
+        weighting_factor = calculate_weighting_factor(games_played_per_team, team_id)
+        
+        # Create weighted row
+        weighted_row = {'Player_ID': player_id}
+        
+        for col in numeric_columns:
+            if col.endswith('_prev') and col.replace('_prev', '_curr') in combined_stats.columns:
+                base_col = col.replace('_prev', '')
+                curr_col = col.replace('_prev', '_curr')
+                
+                prev_val = player_row.get(col, 0)
+                curr_val = player_row.get(curr_col, 0)
+                
+                # Weighted combination: prev_weight * prev + (1 - prev_weight) * curr
+                weighted_val = weighting_factor * prev_val + (1 - weighting_factor) * curr_val
+                weighted_row[base_col] = weighted_val
+                
+            elif not col.endswith('_curr'):
+                # Keep non-season-specific columns
+                weighted_row[col] = player_row.get(col, 0)
+        
+        weighted_stats.append(weighted_row)
+    
+    game_stats = pd.DataFrame(weighted_stats)
+    
+elif previous_season_processed is not None:
+    # Only previous season available
+    game_stats = previous_season_processed
+    print("Using only previous season data")
+    
+elif current_season_processed is not None:
+    # Only current season available
+    game_stats = current_season_processed
+    print("Using only current season data")
+    
+else:
+    # Fallback to original method
+    numeric_columns = game_stats.select_dtypes(include='number').columns
+    game_stats = game_stats.groupby(['Player_ID', 'Season'], as_index=False)[numeric_columns].mean()
+    game_stats = game_stats.groupby('Player_ID', as_index=False)[numeric_columns].mean()
 player_availability_score = calculate_player_availability_score()
 
 stats = pd.merge(
@@ -78,8 +225,28 @@ ratings.loc[:, 'Total_Available_Rating'] = ratings.apply(
 ratings.loc[:, 'Total_Available_Rating'] = normalize(ratings['Total_Available_Rating'])
 
 # Weekly ratings
-schedule_file = "data/regular_season_schedule_2024-2025.csv"
-games_per_week, max_games_per_week = calculate_games_per_week(schedule_file)
+schedule_files = [
+    "data/regular_season_schedule_2024-2025.csv",
+    "data/regular_season_schedule_2025-2026.csv"
+]
+
+# Try to load the most recent schedule file that exists
+schedule_file = None
+for file_path in reversed(schedule_files):  # Try 2025-2026 first, then 2024-2025
+    try:
+        games_per_week, max_games_per_week = calculate_games_per_week(file_path)
+        schedule_file = file_path
+        print(f"Using schedule file: {file_path}")
+        break
+    except FileNotFoundError:
+        print(f"Schedule file not found: {file_path} - trying next")
+    except Exception as e:
+        print(f"Error loading schedule file {file_path}: {e} - trying next")
+
+if schedule_file is None:
+    print("Warning: No valid schedule file found. Weekly ratings will not be calculated.")
+    games_per_week = {}
+    max_games_per_week = {}
 
 weekly_ratings = ratings[['Player_ID', 'Name', 'TEAM_ID', 'Total_Rating', 'Total_Available_Rating']]
 for player in weekly_ratings['Player_ID']:
