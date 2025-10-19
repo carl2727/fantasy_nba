@@ -1,13 +1,14 @@
 # views.py
 from django import forms
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.contrib.auth import login, authenticate, logout
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import HttpRequest, JsonResponse, Http404
 from . import ratings as ratings_data_module
-from .models import *
+from .models import Team, TeamPlayer, DraftPick
 from django.db import transaction
 from .forms import MinimalUserCreationForm, TeamNameForm
 from django.conf import settings
@@ -343,6 +344,58 @@ def _get_team_position_coverage(active_team, fantasy_positions_map):
     else:
         return f"{', '.join(missing_display_parts)}"
 
+def _ensure_and_get_draft_picks(team, ratings_df):
+    """
+    Ensures draft picks exist for a team and returns them as a DataFrame.
+    If they don't exist, creates them based on Total_Rating.
+    """
+    if not team:
+        return pd.DataFrame(columns=['player_id', 'pick_number'])
+
+    if not DraftPick.objects.filter(team=team).exists():
+        # Sort players by Total_Rating descending to establish initial draft order
+        sorted_df = ratings_df.sort_values(by='Total_Rating', ascending=False)
+        draft_picks_to_create = []
+        for i, row in enumerate(sorted_df.itertuples(), 1):
+            player_id = getattr(row, 'Player_ID', None)
+            if player_id is not None:
+                try:
+                    player_id_str = str(int(float(player_id)))
+                    draft_picks_to_create.append(
+                        DraftPick(team=team, player_id=player_id_str, pick_number=i)
+                    )
+                except (ValueError, TypeError):
+                    logger.warning(f"Could not process Player_ID '{player_id}' for draft pick creation.")
+        if draft_picks_to_create:
+            DraftPick.objects.bulk_create(draft_picks_to_create)
+
+    return pd.DataFrame.from_records(DraftPick.objects.filter(team=team).values('player_id', 'pick_number'))
+def _ensure_draft_picks_exist(team, ratings_df):
+    """
+    Checks if draft picks exist for a team. If not, creates them based on Total_Rating.
+    """
+    if not team or DraftPick.objects.filter(team=team).exists():
+        return
+
+    # Sort players by Total_Rating descending to establish initial draft order
+    sorted_df = ratings_df.sort_values(by='Total_Rating', ascending=False)
+
+    draft_picks_to_create = []
+    for i, row in enumerate(sorted_df.itertuples(), 1):
+        player_id = getattr(row, 'Player_ID', None)
+        if player_id is not None:
+            try:
+                # Ensure player_id is consistently stored, e.g., as a string of an int
+                player_id_str = str(int(float(player_id)))
+                draft_picks_to_create.append(
+                    DraftPick(team=team, player_id=player_id_str, pick_number=i)
+                )
+            except (ValueError, TypeError):
+                logger.warning(f"Could not process Player_ID '{player_id}' for draft pick creation.")
+
+    if draft_picks_to_create:
+        DraftPick.objects.bulk_create(draft_picks_to_create)
+
 def _get_punt_categories_string(session_data):
     """
     Generates a string showing the punt categories if any are set.
@@ -375,24 +428,47 @@ def show_ratings(request: HttpRequest):
     
     # --- Sorting Logic ---
     sort_by_param = request.GET.get('sort_by')
+    toggle_param = request.GET.get('toggle')
     
+    # Load draft picks early if there's an active team, to allow sorting by Draft_Pos
+    active_team_for_draft = Team.objects.filter(creator=request.user, is_active=True).first() if request.user.is_authenticated else None
+    if active_team_for_draft:
+        draft_picks_df = _ensure_and_get_draft_picks(active_team_for_draft, ratings_df)
+        if not draft_picks_df.empty:
+            # Convert player_id to match the type in ratings_df for merging
+            draft_picks_df['player_id'] = pd.to_numeric(draft_picks_df['player_id'], errors='coerce')
+            ratings_df = pd.merge(
+                ratings_df,
+                draft_picks_df.rename(columns={'player_id': 'Player_ID', 'pick_number': 'Draft_Pos'}),
+                on='Player_ID',
+                how='left'
+            )
+
     active_sort_column = request.session.get('show_ratings_sort_by', None)
     active_sort_direction = request.session.get('show_ratings_sort_direction', 'desc') 
 
-    if sort_by_param: 
-        if active_sort_column == sort_by_param: 
+    # Only toggle or change sort settings when user clicked a header (toggle=1)
+    if sort_by_param and toggle_param == '1':
+        # Special case for Draft_Pos which is only available with an active team
+        if sort_by_param == 'Draft_Pos' and not active_team_for_draft:
+            pass # Do not sort by Draft_Pos if there is no active team
+        elif active_sort_column == sort_by_param:
             current_sort_direction = 'asc' if active_sort_direction == 'desc' else 'desc'
-        else: 
-            current_sort_direction = 'desc' 
-        
+        else:
+            current_sort_direction = 'desc'
+
         request.session['show_ratings_sort_by'] = sort_by_param
         request.session['show_ratings_sort_direction'] = current_sort_direction
-        
+
         active_sort_column = sort_by_param
         active_sort_direction = current_sort_direction
 
-    if active_sort_column and active_sort_column in ratings_df.columns:
-        ascending_flag = (active_sort_direction == 'asc')
+    if active_sort_column and active_sort_column in ratings_df.columns and (sort_by_param or request.session.get('show_ratings_sort_by')):
+        # For Draft_Pos, lower number is better, so 'desc' should be ascending sort.
+        if active_sort_column == 'Draft_Pos':
+            ascending_flag = (active_sort_direction == 'desc')
+        else: # For all other columns, 'asc' means ascending.
+            ascending_flag = (active_sort_direction == 'asc')
         if ratings_df[active_sort_column].dtype == 'object':
             if active_sort_column == 'Name':
                  ratings_df = ratings_df.sort_values(
@@ -413,6 +489,7 @@ def show_ratings(request: HttpRequest):
     active_team_player_ids = set()
     team_player_statuses_map = {}
     on_team_player_ids = set()
+    draft_picks_map = {}
     team_coverage_string = "No active team or no players on team."
 
 
@@ -421,10 +498,13 @@ def show_ratings(request: HttpRequest):
         active_team = user_teams.filter(is_active=True).first()
         if active_team:
             team_player_entries = TeamPlayer.objects.filter(team=active_team).select_related('team')
-            active_team_player_ids = set(tp.player_id for tp in team_player_entries) 
+            active_team_player_ids = set(str(tp.player_id) for tp in team_player_entries)
             team_player_statuses_map = {tp.player_id: tp.status for tp in team_player_entries}
-            on_team_player_ids = set(tp.player_id for tp in team_player_entries if tp.status == 'ON_TEAM')
+            on_team_player_ids = set(str(tp.player_id) for tp in team_player_entries if tp.status == 'ON_TEAM')
             team_coverage_string = _get_team_position_coverage(active_team, fantasy_positions_map)
+
+
+    final_column_display_names['Draft_Pos'] = 'Draft Pos'
 
     # Generate punt categories string
     punt_categories_string = _get_punt_categories_string(request.session)
@@ -433,15 +513,15 @@ def show_ratings(request: HttpRequest):
     for record in ratings_df.to_dict('records'):
         processed_record = {}
         player_id_val = record.get('Player_ID')
-
-        processed_record['Player_ID'] = player_id_val
-
-        is_on_team_flag = False
+        player_id_str = None
         if player_id_val is not None:
             try:
-                is_on_team_flag = int(float(player_id_val)) in active_team_player_ids
+                player_id_str = str(int(float(player_id_val)))
             except (ValueError, TypeError):
-                logger.warning(f"Could not convert Player_ID '{player_id_val}' to int for team check in show_ratings.")
+                pass
+        processed_record['Player_ID'] = player_id_str
+
+        is_on_team_flag = player_id_str in active_team_player_ids if player_id_str else False
         processed_record['is_on_team'] = is_on_team_flag
 
         current_status_display = 'Available' 
@@ -453,6 +533,10 @@ def show_ratings(request: HttpRequest):
             except (ValueError, TypeError):
                 logger.warning(f"Could not convert Player_ID '{player_id_val}' to int for status lookup in show_ratings.")
         processed_record['Status'] = current_status_display
+
+        # Add draft position
+        if 'Draft_Pos' not in record:
+            record['Draft_Pos'] = None
 
         fantasy_positions_str = "N/A" 
         if player_id_val is not None:
@@ -491,6 +575,7 @@ def show_ratings(request: HttpRequest):
             'value': f"Team Avg ({num_players_on_team_calc} Player{'s' if num_players_on_team_calc != 1 else ''})",
             'css_class': None 
         }
+        team_average_row_for_table['Draft_Pos'] = {'value': '', 'css_class': None}
         # For point 2: Ensure POS cell is empty for team average row
         if 'POS' in final_column_display_names:
             team_average_row_for_table['POS'] = {'value': '', 'css_class': None}
@@ -505,6 +590,9 @@ def show_ratings(request: HttpRequest):
 
         styled_ratings_data.insert(0, team_average_row_for_table)
 
+    # Read highlighted players from session (session-persistent per user)
+    highlighted_player_ids = [str(pid) for pid in request.session.get('highlighted_player_ids', [])]
+
     context = {
         'ratings': styled_ratings_data,
         'column_display_names': final_column_display_names,
@@ -517,6 +605,7 @@ def show_ratings(request: HttpRequest):
         'team_coverage_string': team_coverage_string, # Add to context
         'punt_categories_string': punt_categories_string, # Add punt categories to context
         'enable_heatmap': request.session.get('enable_heatmap', False),
+        'highlighted_player_ids': highlighted_player_ids,
     }
     return render(request, 'fantasy_nba/show_ratings.html', context)
 
@@ -831,6 +920,83 @@ def update_player_status(request):
 
     json_response_data['error'] = 'Invalid request method.'
     return JsonResponse(json_response_data, status=405)
+
+@login_required
+def toggle_highlight(request):
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=405)
+
+    player_id = request.POST.get('player_id')
+    if not player_id:
+        return JsonResponse({'success': False, 'error': 'Missing player_id.'}, status=400)
+
+    # Use session to store highlighted players as a set-like list of strings
+    highlighted = set(str(pid) for pid in request.session.get('highlighted_player_ids', []))
+    player_id_str = str(player_id)
+    if player_id_str in highlighted:
+        highlighted.remove(player_id_str)
+        highlighted_now = False
+    else:
+        highlighted.add(player_id_str)
+        highlighted_now = True
+
+    request.session['highlighted_player_ids'] = list(highlighted)
+    request.session.modified = True
+
+    return JsonResponse({'success': True, 'highlighted': highlighted_now})
+
+@login_required
+def move_draft_pick(request):
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=405)
+
+    active_team = Team.objects.filter(creator=request.user, is_active=True).first()
+    if not active_team:
+        return JsonResponse({'success': False, 'error': 'No active team found.'}, status=400)
+
+    player_id = request.POST.get('player_id')
+    direction = request.POST.get('direction')
+
+    if not all([player_id, direction]) or direction not in ['up', 'down']:
+        return JsonResponse({'success': False, 'error': 'Invalid parameters.'}, status=400)
+
+    try:
+        with transaction.atomic():
+            # Get the pick for the current player
+            current_pick = DraftPick.objects.select_for_update().get(team=active_team, player_id=player_id)
+            current_pick_number = current_pick.pick_number
+
+            # Determine the target pick number
+            if direction == 'up':
+                target_pick_number = current_pick_number - 1
+                if target_pick_number < 1:
+                    return JsonResponse({'success': False, 'error': 'Already at the top.'}, status=400)
+            else: # direction == 'down'
+                target_pick_number = current_pick_number + 1
+
+            # Get the pick to swap with
+            other_pick = DraftPick.objects.select_for_update().get(team=active_team, pick_number=target_pick_number)
+
+            # To avoid a UNIQUE constraint violation, we perform a three-step swap.
+            # 1. Temporarily move the 'other' pick to a non-existent pick number.
+            #    A value of 0 or a negative number is safe as pick numbers are positive.
+            placeholder_pick_number = 0
+            other_pick.pick_number = placeholder_pick_number
+            other_pick.save()
+
+            # 2. Now that the original pick number of 'other_pick' is free, move 'current_pick' to it.
+            current_pick.pick_number = target_pick_number
+            current_pick.save()
+
+            # 3. Finally, update 'other_pick' from the placeholder to the original pick number of 'current_pick'.
+            other_pick.pick_number = current_pick_number
+            other_pick.save()
+    except DraftPick.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Draft pick not found.'}, status=404)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+    return JsonResponse({'success': True, 'message': 'Draft position updated.'})
 
 @login_required
 def add_player(request):
