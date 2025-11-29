@@ -32,6 +32,7 @@ COLUMN_DISPLAY_NAMES = {
     'TOV_RT': 'TOV',
     'Total_Rating': 'Overall Rating',
     'Total_Available_Rating': 'Performance Rating',
+    'Combined_Rating': 'Combined Rating',
     'Player_ID': 'Player_ID',
 }
 
@@ -58,7 +59,7 @@ def _get_default_columns():
     default_cols = [
         'Name', 'PTS_RT', 'REB_RT', 'AST_RT', 'FGN_RT', 'FTN_RT',
         'FG3M_RT', 'BLK_RT', 'STL_RT', 'TOV_RT',
-        'Total_Rating', 'Total_Available_Rating'
+        'Total_Rating', 'Total_Available_Rating', 'Combined_Rating'
     ]
     if 'POS' in COLUMN_DISPLAY_NAMES: # Conditionally add POS if defined
         default_cols.insert(1, 'POS') # Insert POS after Name
@@ -67,14 +68,16 @@ def _get_default_columns():
 RATING_CHOICES = [
     (key, COLUMN_DISPLAY_NAMES[key].replace('_RT', ''))
     for key in COLUMN_DISPLAY_NAMES
-    if key not in ['Name', 'Total_Rating', 'Total_Available_Rating', 'Player_ID']
+    if key not in ['Name', 'Total_Rating', 'Total_Available_Rating', 'Combined_Rating', 'Player_ID']
 ]
 
 STATUS_FILTER_CHOICES = [
     ('ALL', 'All Players'),
     ('On Team', 'On Team'),       # Value matches TeamPlayer display name for 'ON_TEAM'
     ('Available', 'Available'),   # Value matches TeamPlayer display name for 'AVAILABLE'
-    ('Unavailable', 'Unavailable') # Value matches TeamPlayer display name for 'UNAVAILABLE'
+    ('Unavailable', 'Unavailable'), # Value matches TeamPlayer display name for 'UNAVAILABLE'
+    ('Injured', 'Injured'),        # New filter for injured players
+    ('Healthy', 'Healthy')         # New filter for healthy players
 ]
 
 if hasattr(settings, 'BASE_DIR'):
@@ -151,6 +154,7 @@ def _get_final_column_display_names(session_data, all_rating_columns):
         punt_suffix = "_Punt_" + "_".join(sorted([cat.replace('_RT', '') for cat in punted_categories]))
         punt_perf_col_actual_name_candidate = f'Total{punt_suffix}_Available_Rating'
         punt_overall_col_actual_name_candidate = f'Total{punt_suffix}_Rating'
+        punt_combined_col_actual_name_candidate = f'Total{punt_suffix}_Combined_Rating'
 
         # Check if punt-specific ratings exist and replace the standard ratings
         if punt_perf_col_actual_name_candidate in all_rating_columns:
@@ -166,6 +170,12 @@ def _get_final_column_display_names(session_data, all_rating_columns):
             # Remove the standard Overall Rating from display
             if 'Total_Rating' in final_names:
                 del final_names['Total_Rating']
+        
+        if punt_combined_col_actual_name_candidate in all_rating_columns:
+            # Replace the standard Combined Rating with the punt-specific one
+            final_names[punt_combined_col_actual_name_candidate] = "Combined Rating"
+            if 'Combined_Rating' in final_names:
+                del final_names['Combined_Rating']
 
     final_names['Status'] = 'Status'
     return final_names
@@ -182,6 +192,10 @@ class SettingsForm(forms.Form):
     enable_heatmap = forms.BooleanField(
         required=False,
         label='Heatmap'
+    )
+    enable_tier_colors = forms.BooleanField(
+        required=False,
+        label='Tier Colors'
     )
 
 class PuntForm(forms.Form):
@@ -200,7 +214,10 @@ def punt(request: HttpRequest):
     if request.method == 'POST':
         if 'save_punt' in request.POST:
             punt_form = PuntForm(request.POST)
-            settings_form = SettingsForm(initial={'enable_heatmap': request.session.get('enable_heatmap', False)})
+            settings_form = SettingsForm(initial={
+                'enable_heatmap': request.session.get('enable_heatmap', False),
+                'enable_tier_colors': request.session.get('enable_tier_colors', False)
+            })
             if punt_form.is_valid():
                 punted_categories = [
                     punt_form.cleaned_data['punt_category_1'],
@@ -217,6 +234,7 @@ def punt(request: HttpRequest):
             })
             if settings_form.is_valid():
                 request.session['enable_heatmap'] = settings_form.cleaned_data.get('enable_heatmap', False)
+                request.session['enable_tier_colors'] = settings_form.cleaned_data.get('enable_tier_colors', False)
                 return redirect('show_ratings')
     else:
         punted = request.session.get('punted_categories', [])
@@ -224,7 +242,10 @@ def punt(request: HttpRequest):
             'punt_category_1': punted[0] if len(punted) > 0 else '',
             'punt_category_2': punted[1] if len(punted) > 1 else '',
         })
-        settings_form = SettingsForm(initial={'enable_heatmap': request.session.get('enable_heatmap', False)})
+        settings_form = SettingsForm(initial={
+            'enable_heatmap': request.session.get('enable_heatmap', False),
+            'enable_tier_colors': request.session.get('enable_tier_colors', False)
+        })
     return render(request, 'fantasy_nba/punt.html', {'form': punt_form, 'settings_form': settings_form})
 
 def _get_team_position_coverage(active_team, fantasy_positions_map):
@@ -362,7 +383,7 @@ def _ensure_and_get_draft_picks(team, ratings_df):
                 try:
                     player_id_str = str(int(float(player_id)))
                     draft_picks_to_create.append(
-                        DraftPick(team=team, player_id=player_id_str, pick_number=i)
+                        DraftPick(team=team, player_id=player_id_str, pick_number=int(i))
                     )
                 except (ValueError, TypeError):
                     logger.warning(f"Could not process Player_ID '{player_id}' for draft pick creation.")
@@ -506,6 +527,18 @@ def show_ratings(request: HttpRequest):
 
     final_column_display_names['Draft_Pos'] = 'Draft Pos'
 
+    # Reorder columns to put Draft_Pos first (if active team exists)
+    if active_team:
+        ordered_columns = {}
+        # Add Draft_Pos first
+        if 'Draft_Pos' in final_column_display_names:
+            ordered_columns['Draft_Pos'] = final_column_display_names['Draft_Pos']
+        # Add all other columns
+        for key, value in final_column_display_names.items():
+            if key != 'Draft_Pos':
+                ordered_columns[key] = value
+        final_column_display_names = ordered_columns
+
     # Generate punt categories string
     punt_categories_string = _get_punt_categories_string(request.session)
 
@@ -534,9 +567,14 @@ def show_ratings(request: HttpRequest):
                 logger.warning(f"Could not convert Player_ID '{player_id_val}' to int for status lookup in show_ratings.")
         processed_record['Status'] = current_status_display
 
-        # Add draft position
-        if 'Draft_Pos' not in record:
-            record['Draft_Pos'] = None
+        # Add draft position - ensure it's an integer
+        if 'Draft_Pos' in record and record['Draft_Pos'] is not None:
+            try:
+                processed_record['Draft_Pos'] = int(float(record['Draft_Pos']))
+            except (ValueError, TypeError):
+                processed_record['Draft_Pos'] = None
+        else:
+            processed_record['Draft_Pos'] = None
 
         fantasy_positions_str = "N/A" 
         if player_id_val is not None:
@@ -556,12 +594,31 @@ def show_ratings(request: HttpRequest):
         initial_data_list.append(processed_record)
     
     if current_status_filter != 'ALL':
-        initial_data_list = [
-            record for record in initial_data_list
-            if record.get('Status') == current_status_filter
-        ]
+        if current_status_filter == 'Injured':
+            # Filter for injured players using session data
+            injured_player_ids = [str(pid) for pid in request.session.get('injured_player_ids', [])]
+            initial_data_list = [
+                record for record in initial_data_list
+                if str(record.get('Player_ID', '')) in injured_player_ids
+            ]
+        elif current_status_filter == 'Healthy':
+            # Filter for healthy players using session data
+            injured_player_ids = [str(pid) for pid in request.session.get('injured_player_ids', [])]
+            initial_data_list = [
+                record for record in initial_data_list
+                if str(record.get('Player_ID', '')) not in injured_player_ids
+            ]
+        else:
+            initial_data_list = [
+                record for record in initial_data_list
+                if record.get('Status') == current_status_filter
+            ]
 
-    styled_ratings_data = _apply_styles_to_data(initial_data_list, STYLED_COLUMNS)
+    styled_ratings_data = _apply_styles_to_data(
+        initial_data_list, 
+        STYLED_COLUMNS, 
+        enable_heatmap=request.session.get('enable_heatmap', False),
+        enable_tier_colors=request.session.get('enable_tier_colors', False))
 
     (styled_team_averages_dict, num_players_on_team_calc) = _get_styled_team_averages_and_count(
         ratings_data_module.ratings.copy(), active_team, final_column_display_names
@@ -592,6 +649,17 @@ def show_ratings(request: HttpRequest):
 
     # Read highlighted players from session (session-persistent per user)
     highlighted_player_ids = [str(pid) for pid in request.session.get('highlighted_player_ids', [])]
+    
+    # Read injured players from session (session-persistent per user)
+    injured_player_ids = [str(pid) for pid in request.session.get('injured_player_ids', [])]
+    
+    # Read categories visibility from session
+    show_categories = request.session.get('show_categories', True)
+    
+    # Define which columns are category columns (can be toggled) - only statistical categories, not ratings
+    category_columns = [col for col in final_column_display_names.keys() 
+                      if col not in ['Name', 'POS', 'Status', 'Draft_Pos', 'Player_ID', 'Total_Rating', 'Total_Available_Rating'] 
+                      and not col.endswith(('_Rating', '_Available_Rating', '_Combined_Rating'))]
 
     context = {
         'ratings': styled_ratings_data,
@@ -605,7 +673,11 @@ def show_ratings(request: HttpRequest):
         'team_coverage_string': team_coverage_string, # Add to context
         'punt_categories_string': punt_categories_string, # Add punt categories to context
         'enable_heatmap': request.session.get('enable_heatmap', False),
+        'enable_tier_colors': request.session.get('enable_tier_colors', False),
         'highlighted_player_ids': highlighted_player_ids,
+        'injured_player_ids': injured_player_ids,
+        'show_categories': show_categories,
+        'category_columns': category_columns,
     }
     return render(request, 'fantasy_nba/show_ratings.html', context)
 
@@ -656,31 +728,54 @@ def _get_styled_team_averages_and_count(ratings_df, active_team, final_column_di
     styled_team_averages = _style_single_row_data(team_averages_raw, STYLED_COLUMNS)
     return styled_team_averages, num_players_on_team
 
-def _get_value_based_css_class(value):
+def _get_value_based_css_class(value, is_rating_column=False):
     """Determines CSS class based on fixed value thresholds.
-    Assumes value is on a 0-100 scale where higher is better."""
+    Assumes value is on a 0-100 scale where higher is better.
+    If is_rating_column=True, uses the new rating color scheme."""
     if value is None or not isinstance(value, (int, float)):
         return None
 
-    if value > 85:
-        return 'bg-dark-green'
-    elif value > 70:
-        return 'bg-green'
-    elif value > 55:
-        return 'bg-light-green'
-    elif value < 15:
-        return 'bg-dark-red'
-    elif value < 30:
-        return 'bg-red'
-    elif value < 45:
-        return 'bg-light-red'
-    elif value >= 45 and value <= 55:
-        return 'bg-grey'
-        
+    if is_rating_column:
+        # New rating color scheme
+        if value < 50: # Light Grey
+            return 'bg-light-grey'
+        elif value < 55: # Grey
+            return 'bg-grey'
+        elif value < 60: # Dark Grey
+            return 'bg-dark-grey'
+        elif value < 65: # Green
+            return 'bg-green'
+        elif value < 70: # Blue
+            return 'bg-blue'
+        elif value < 75: # Yellow
+            return 'bg-yellow'
+        elif value < 85: # Orange
+            return 'bg-orange'
+        elif value < 90: # Pink
+            return 'bg-pink'
+        else: # 90+
+            return 'bg-purple'
+    else:
+        # Original heatmap colors for statistical categories
+        if value > 85:
+            return 'bg-dark-green'
+        elif value > 70:
+            return 'bg-green'
+        elif value > 55:
+            return 'bg-light-green'
+        elif value < 15:
+            return 'bg-dark-red'
+        elif value < 30:
+            return 'bg-red'
+        elif value < 45:
+            return 'bg-light-red'
+        elif value >= 45 and value <= 55:
+            return 'bg-grey'
+            
     return None
 
 
-def _apply_styles_to_data(data_list_of_dicts: list, columns_to_style: list):
+def _apply_styles_to_data(data_list_of_dicts: list, columns_to_style: list, enable_heatmap=False, enable_tier_colors=False):
     styled_data = []
     for player_row_dict in data_list_of_dicts:
         styled_player_row = {}
@@ -698,9 +793,13 @@ def _apply_styles_to_data(data_list_of_dicts: list, columns_to_style: list):
                     value_to_store = None 
 
             css_class = None
-            if col_actual_name in columns_to_style:
+            if enable_heatmap and col_actual_name in columns_to_style:
                 value_for_styling = raw_value
                 css_class = _get_value_based_css_class(value_for_styling)
+            elif enable_tier_colors and col_actual_name.endswith(('_Rating', '_Available_Rating', '_Combined_Rating')):
+                # Apply rating heatmap to rating columns
+                value_for_styling = raw_value
+                css_class = _get_value_based_css_class(value_for_styling, is_rating_column=True)
             
             styled_player_row[col_actual_name] = {'value': value_to_store, 'css_class': css_class}
         styled_data.append(styled_player_row)
@@ -780,7 +879,11 @@ def team(request):
                     record['POS'] = "N/A"
                 roster_list.append(record)
             
-            team_roster_data = _apply_styles_to_data(roster_list, STYLED_COLUMNS)
+            team_roster_data = _apply_styles_to_data(
+                roster_list, 
+                STYLED_COLUMNS, 
+                enable_heatmap=request.session.get('enable_heatmap', False),
+                enable_tier_colors=request.session.get('enable_tier_colors', False))
             team_averages, _ = _get_styled_team_averages_and_count(ratings_df, active_team, final_column_display_names)
 
         team_coverage_string = _get_team_position_coverage(active_team, fantasy_positions_map)
@@ -946,6 +1049,87 @@ def toggle_highlight(request):
     return JsonResponse({'success': True, 'highlighted': highlighted_now})
 
 @login_required
+def toggle_injured(request):
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=405)
+
+    player_id = request.POST.get('player_id')
+    if not player_id:
+        return JsonResponse({'success': False, 'error': 'Missing player_id.'}, status=400)
+
+    # Use session to store injured players as a set-like list of strings
+    injured = set(str(pid) for pid in request.session.get('injured_player_ids', []))
+    player_id_str = str(player_id)
+    if player_id_str in injured:
+        injured.remove(player_id_str)
+        injured_now = False
+    else:
+        injured.add(player_id_str)
+        injured_now = True
+
+    request.session['injured_player_ids'] = list(injured)
+    request.session.modified = True
+
+    return JsonResponse({'success': True, 'injured': injured_now})
+
+@login_required
+def set_draft_order(request):
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=405)
+
+    active_team = Team.objects.filter(creator=request.user, is_active=True).first()
+    if not active_team:
+        return JsonResponse({'success': False, 'error': 'No active team found.'}, status=400)
+
+    # Get the visible player order from the request
+    player_order = request.POST.getlist('player_order[]')
+    if not player_order:
+        return JsonResponse({'success': False, 'error': 'No player order provided.'}, status=400)
+
+    try:
+        with transaction.atomic():
+            # Clear existing draft picks for this team
+            DraftPick.objects.filter(team=active_team).delete()
+            
+            # Create new draft picks based on visible order
+            draft_picks_to_create = []
+            for i, player_id_str in enumerate(player_order, 1):
+                if player_id_str and player_id_str != 'TEAM_AVERAGE_ROW':
+                    try:
+                        # Validate player_id exists in ratings
+                        player_id_int = int(float(player_id_str))
+                        # Check if player exists in ratings data
+                        ratings_df = ratings_data_module.ratings.copy()
+                        if player_id_int in ratings_df['Player_ID'].values:
+                            draft_picks_to_create.append(
+                                DraftPick(team=active_team, player_id=str(player_id_int), pick_number=int(i))
+                            )
+                    except (ValueError, TypeError):
+                        logger.warning(f"Could not process Player_ID '{player_id_str}' for draft order.")
+                        continue
+            
+            if draft_picks_to_create:
+                DraftPick.objects.bulk_create(draft_picks_to_create)
+                
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+    return JsonResponse({'success': True, 'message': f'Draft order set for {len(draft_picks_to_create)} players.'})
+
+@login_required
+def toggle_categories(request):
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=405)
+
+    # Toggle categories visibility
+    current_show_categories = request.session.get('show_categories', True)
+    new_show_categories = not current_show_categories
+    request.session['show_categories'] = new_show_categories
+    request.session.modified = True
+
+    return JsonResponse({'success': True, 'show_categories': new_show_categories})
+
+@login_required
 def move_draft_pick(request):
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=405)
@@ -956,8 +1140,20 @@ def move_draft_pick(request):
 
     player_id = request.POST.get('player_id')
     direction = request.POST.get('direction')
+    set_position = request.POST.get('set_position')
 
-    if not all([player_id, direction]) or direction not in ['up', 'down']:
+    if not player_id:
+        return JsonResponse({'success': False, 'error': 'Missing player_id.'}, status=400)
+
+    # Handle direct position setting
+    if set_position is not None:
+        try:
+            target_pick_number = int(set_position)
+            if target_pick_number < 1:
+                return JsonResponse({'success': False, 'error': 'Position must be at least 1.'}, status=400)
+        except ValueError:
+            return JsonResponse({'success': False, 'error': 'Invalid position number.'}, status=400)
+    elif not direction or direction not in ['up', 'down']:
         return JsonResponse({'success': False, 'error': 'Invalid parameters.'}, status=400)
 
     try:
@@ -967,7 +1163,9 @@ def move_draft_pick(request):
             current_pick_number = current_pick.pick_number
 
             # Determine the target pick number
-            if direction == 'up':
+            if set_position is not None:
+                target_pick_number = int(set_position)
+            elif direction == 'up':
                 target_pick_number = current_pick_number - 1
                 if target_pick_number < 1:
                     return JsonResponse({'success': False, 'error': 'Already at the top.'}, status=400)

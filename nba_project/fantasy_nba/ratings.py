@@ -15,6 +15,17 @@ TOTAL_GAMES_PER_SEASON = 82
 categories = ['FGN', 'FTN', 'PTS', 'FG3M', 'REB', 'BLK', 'STL', 'AST', 'TOV']
 rating_columns = ['FGN_RT', 'FTN_RT', 'FG3M_RT', 'PTS_RT', 'REB_RT', 'AST_RT', 'BLK_RT', 'STL_RT','TOV_RT']
 
+def extract_team_from_matchup(matchup):
+    """
+    Extrahiert das Team-Kürzel aus dem MATCHUP String.
+    Format: "TEAM @ OPP" oder "TEAM vs. OPP"
+    Gibt das erste Team zurück (das spielende Team).
+    """
+    if pd.isna(matchup):
+        return None
+    parts = matchup.split()
+    return parts[0] if parts else None
+
 def calculate_games_played_per_team(current_season_stats):
     """
     Berechnet die Anzahl der gespielten Spiele pro Team in der aktuellen Saison.
@@ -22,9 +33,16 @@ def calculate_games_played_per_team(current_season_stats):
     if current_season_stats.empty:
         return {}
     
+    # Extrahiere Team aus MATCHUP Spalte
+    if 'MATCHUP' not in current_season_stats.columns:
+        return {}
+    
+    current_season_stats = current_season_stats.copy()
+    current_season_stats['TEAM_ID'] = current_season_stats['MATCHUP'].apply(extract_team_from_matchup)
+    
     # Zähle einzigartige Spiele pro Team
     games_played = {}
-    for team_id in current_season_stats['TEAM_ID'].unique():
+    for team_id in current_season_stats['TEAM_ID'].dropna().unique():
         team_games = current_season_stats[current_season_stats['TEAM_ID'] == team_id]
         unique_games = team_games['Game_ID'].nunique()
         games_played[team_id] = unique_games
@@ -48,7 +66,6 @@ def calculate_weighting_factor(games_played, team_id):
 
 # Load data
 game_stats_files = [
-    "data/all_player_game_stats_2024_2025.csv",
     "data/all_player_game_stats_2025_2026.csv"
 ]
 players_file = "data/nba_players.csv"
@@ -62,10 +79,7 @@ for file_path in game_stats_files:
     try:
         season_stats = pd.read_csv(file_path)
         # Add season identifier
-        if "2024_2025" in file_path:
-            season_stats['Season'] = PREVIOUS_SEASON
-            previous_season_stats = season_stats
-        elif "2025_2026" in file_path:
+        if "2025_2026" in file_path:
             season_stats['Season'] = CURRENT_SEASON
             current_season_stats = season_stats
         game_stats_list.append(season_stats)
@@ -105,82 +119,18 @@ if current_season_stats is not None:
     games_played_per_team = calculate_games_played_per_team(current_season_stats)
     print(f"Games played per team: {games_played_per_team}")
 
-# Process previous season data
-previous_season_processed = None
-if previous_season_stats is not None:
-    previous_season_processed = previous_season_stats.groupby('Player_ID', as_index=False)[
-        previous_season_stats.select_dtypes(include='number').columns
-    ].mean()
-
-# Process current season data
-current_season_processed = None
+# Only use current season data (2025-26)
 if current_season_stats is not None:
-    current_season_processed = current_season_stats.groupby('Player_ID', as_index=False)[
+    game_stats = current_season_stats.groupby('Player_ID', as_index=False)[
         current_season_stats.select_dtypes(include='number').columns
     ].mean()
-
-# Combine data with weighting
-if previous_season_processed is not None and current_season_processed is not None:
-    # Merge both seasons
-    combined_stats = pd.merge(
-        previous_season_processed, 
-        current_season_processed, 
-        on='Player_ID', 
-        suffixes=('_prev', '_curr'),
-        how='outer'
-    )
-    
-    # Get numeric columns for processing
-    numeric_columns = [col for col in combined_stats.columns if col not in ['Player_ID', 'Season_prev', 'Season_curr']]
-    
-    # Create weighted averages for each player
-    weighted_stats = []
-    
-    for _, player_row in combined_stats.iterrows():
-        player_id = player_row['Player_ID']
-        team_id = player_row.get('TEAM_ID_curr', player_row.get('TEAM_ID_prev'))
-        
-        # Calculate weighting factor for this player's team
-        weighting_factor = calculate_weighting_factor(games_played_per_team, team_id)
-        
-        # Create weighted row
-        weighted_row = {'Player_ID': player_id}
-        
-        for col in numeric_columns:
-            if col.endswith('_prev') and col.replace('_prev', '_curr') in combined_stats.columns:
-                base_col = col.replace('_prev', '')
-                curr_col = col.replace('_prev', '_curr')
-                
-                prev_val = player_row.get(col, 0)
-                curr_val = player_row.get(curr_col, 0)
-                
-                # Weighted combination: prev_weight * prev + (1 - prev_weight) * curr
-                weighted_val = weighting_factor * prev_val + (1 - weighting_factor) * curr_val
-                weighted_row[base_col] = weighted_val
-                
-            elif not col.endswith('_curr'):
-                # Keep non-season-specific columns
-                weighted_row[col] = player_row.get(col, 0)
-        
-        weighted_stats.append(weighted_row)
-    
-    game_stats = pd.DataFrame(weighted_stats)
-    
-elif previous_season_processed is not None:
-    # Only previous season available
-    game_stats = previous_season_processed
-    print("Using only previous season data")
-    
-elif current_season_processed is not None:
-    # Only current season available
-    game_stats = current_season_processed
-    print("Using only current season data")
-    
+    print("Using only current season data (2025-26)")
 else:
-    # Fallback to original method
+    # Fallback to any available data
     numeric_columns = game_stats.select_dtypes(include='number').columns
     game_stats = game_stats.groupby(['Player_ID', 'Season'], as_index=False)[numeric_columns].mean()
     game_stats = game_stats.groupby('Player_ID', as_index=False)[numeric_columns].mean()
+    print("Fallback: Using combined season data")
 player_availability_score = calculate_player_availability_score()
 
 stats = pd.merge(
@@ -223,6 +173,10 @@ ratings.loc[:, 'Total_Available_Rating'] = ratings.apply(
     axis=1
 )
 ratings.loc[:, 'Total_Available_Rating'] = normalize(ratings['Total_Available_Rating'])
+
+# Combined Rating
+ratings.loc[:, 'Combined_Rating'] = (ratings['Total_Rating'] + ratings['Total_Available_Rating']) / 2
+ratings.loc[:, 'Combined_Rating'] = normalize(ratings['Combined_Rating'])
 
 # Weekly ratings
 schedule_files = [
@@ -283,6 +237,10 @@ for punted_categories in punt_combos:
             axis=1
         )
         ratings.loc[:, f'Total{punt_name}_Available_Rating'] = normalize(ratings[f'Total{punt_name}_Available_Rating'])
+
+        # Punt Combined Rating (must be calculated after punted Overall and Performance ratings)
+        ratings.loc[:, f'Total{punt_name}_Combined_Rating'] = (ratings[f'Total{punt_name}_Rating'] + ratings[f'Total{punt_name}_Available_Rating']) / 2
+        ratings.loc[:, f'Total{punt_name}_Combined_Rating'] = normalize(ratings[f'Total{punt_name}_Combined_Rating'])
     else:
         print(f"Warning: All rating columns are punted in {punted_categories}. Skipping.")
 

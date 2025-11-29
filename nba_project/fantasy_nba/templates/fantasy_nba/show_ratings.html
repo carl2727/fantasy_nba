@@ -9,7 +9,6 @@
     .column-hidden-player-id {
         display: none !important; /* !important to help ensure it overrides other styles if necessary */
     }
-    tr.row-highlight td { background-color: #fff8d6 !important; }
 </style>
 <html>
 <head>
@@ -61,19 +60,32 @@
             <label for="name-search">Search by Name:</label>
             <input type="text" id="name-search" placeholder="Enter player name...">
         </div>
+        <form method="post" action="{% url 'toggle_categories' %}" id="toggle-categories-form" style="display:inline;">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-secondary btn-sm">
+                {% if show_categories %}Hide Categories{% else %}Show Categories{% endif %}
+            </button>
+        </form>
+        {% if active_team %}
+        <button id="set-draft-order-btn" class="btn btn-info btn-sm">
+            Set Draft Positions
+        </button>
+        {% endif %}
     </div>
 
     <table id="ratings-table" class="styled-table">
         <thead>
             <tr>
                 {% for column_key, display_name in column_display_names.items %}
+                    {% if show_categories or column_key not in category_columns %}
                     <th class="{% if column_key == 'Player_ID' %}column-hidden-player-id{% endif %}">
-                        <a href="{% url 'sort_ratings' %}?sort_by={{ column_key }}&toggle=1{% if current_status_filter and current_status_filter != 'ALL' %}&status_filter={{ current_status_filter|urlencode }}{% endif %}">
+                        <a href="{% url 'show_ratings' %}?sort_by={{ column_key }}&toggle=1{% if current_status_filter and current_status_filter != 'ALL' %}&status_filter={{ current_status_filter|urlencode }}{% endif %}">
                             {{ display_name }}
                             {% if sort_by == column_key and sort_direction == 'asc' %} ▲{% endif %}
                             {% if sort_by == column_key and sort_direction == 'desc' %} ▼{% endif %}
                         </a>
                     </th>
+                    {% endif %}
                 {% endfor %}
                 <th>
                     {% if active_team %}
@@ -90,11 +102,18 @@
             {% else %}
                 {% for row in ratings %}
                 {% with player_id_val=row|get_item:'Player_ID'|get_item:'value'|default_if_none:'' %}
-                <tr data-player-id="{{ player_id_val }}" class="{% if player_id_val|stringformat:'s' in highlighted_player_ids %}row-highlight{% endif %}">
+                <tr data-player-id="{{ player_id_val }}">
                     {% for column_actual_name, column_display_name_val in column_display_names.items %}
-                        {% with cell_data=row|get_item:column_actual_name %} {# Each cell_data is {'value': ..., 'css_class': ...} #}
+                        {% if show_categories or column_actual_name not in category_columns %}
+                        {% with cell_data=row|get_item:column_actual_name %}
                             <td data-column-key="{{ column_actual_name }}"
-                                class="{% if enable_heatmap and cell_data.css_class %}{{ cell_data.css_class }}{% endif %}{% if column_actual_name == 'Status' %} player-status-cell{% endif %}{% if column_actual_name == 'Player_ID' %} column-hidden-player-id{% endif %}">
+                                class="{% if cell_data.css_class %}
+                                           {% if enable_heatmap and not column_actual_name|is_rating_column %}
+                                               {{ cell_data.css_class }}
+                                           {% elif enable_tier_colors and column_actual_name|is_rating_column %}
+                                               {{ cell_data.css_class }}
+                                           {% endif %}
+                                       {% endif %}{% if column_actual_name == 'Status' %} player-status-cell{% endif %}{% if column_actual_name == 'Player_ID' %} column-hidden-player-id{% endif %}">
                                 {% if column_actual_name == 'Draft_Pos' and active_team and player_id_val != 'TEAM_AVERAGE_ROW' %}
                                     <div style="display: flex; align-items: center; justify-content: space-between;">
                                         <button class="draft-move-btn" data-player-id="{{ player_id_val }}" data-direction="up" style="padding: 0 5px; line-height: 1;">+</button>
@@ -112,7 +131,8 @@
                                     {{ cell_data.value|floatformat:2|default:"N/A" }}
                                 {% endif %}
                             </td>
-                        {% endwith %} {# This was missing, closes the 'with cell_data' block #}
+                        {% endwith %}
+                        {% endif %}
                     {% endfor %}
                     <td>
                         {% if player_id_val == 'TEAM_AVERAGE_ROW' %}
@@ -145,12 +165,6 @@
                             {% else %}
                                 <!-- Optional: Message if no active team or user not authenticated -->
                             {% endif %}
-                            {# Highlight-Toggle Button immer anzeigen (authentifizierter Nutzer vorausgesetzt) #}
-                            {% if user.is_authenticated %}
-                            <button type="button" class="toggle-highlight-btn" data-player-id="{{ player_id_val }}" title="Toggle highlight">
-                                {% if player_id_val|stringformat:'s' in highlighted_player_ids %}Unhighlight{% else %}Highlight{% endif %}
-                            </button>
-                            {% endif %}
                         {% endif %}
                     </td>
                 </tr>
@@ -164,6 +178,16 @@
 </body>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
+            function reloadWithoutToggle() {
+                const currentUrl = new URL(window.location.href);
+                if (currentUrl.searchParams.has('toggle')) {
+                    currentUrl.searchParams.delete('toggle');
+                    window.location.href = currentUrl.toString();
+                } else {
+                    window.location.reload();
+                }
+            }
+
             const forms = document.querySelectorAll('.update-status-form');
 
             forms.forEach(form => {
@@ -199,10 +223,12 @@
                     })
                     .then(data => {
                         if (data.success) {
-                            // Entferne ggf. vorhandenen toggle-Parameter, um Sortier-Toggle zu verhindern
-                            const currentUrl = new URL(window.location.href);
-                            currentUrl.searchParams.delete('toggle');
-                            window.location.replace(currentUrl.toString());
+                            // The action was successful. Reload the page.
+                            // The browser will use the current URL, including any filter
+                            // and sorting parameters. The server will re-render the page
+                            // with the correct data, causing the player to disappear
+                            // if they no longer match the filter.
+                            location.reload();
                         } else {
                             // Handle failure (e.g., display data.error)
                             alert('Error updating status: ' + (data.error || 'Unknown error'));
@@ -239,49 +265,10 @@
                     .then(response => response.json())
                     .then(data => {
                         if (data.success) {
-                            const currentUrl = new URL(window.location.href);
-                            currentUrl.searchParams.delete('toggle');
-                            window.location.replace(currentUrl.toString());
+                            reloadWithoutToggle();
                         } else {
                             alert('Error: ' + data.error);
                             console.error('Error moving draft pick:', data.error);
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Fetch error:', error);
-                        alert('A network error occurred.');
-                    });
-                });
-            });
-
-            // Highlight Toggle Buttons
-            const highlightButtons = document.querySelectorAll('.toggle-highlight-btn');
-            highlightButtons.forEach(button => {
-                button.addEventListener('click', function(event) {
-                    event.preventDefault();
-
-                    const playerId = this.dataset.playerId;
-                    const url = "{% url 'toggle_highlight' %}";
-                    const csrfTokenInput = document.querySelector('[name=csrfmiddlewaretoken]');
-                    const csrfToken = csrfTokenInput ? csrfTokenInput.value : '';
-
-                    const formData = new FormData();
-                    formData.append('player_id', playerId);
-                    formData.append('csrfmiddlewaretoken', csrfToken);
-
-                    fetch(url, {
-                        method: 'POST',
-                        body: formData,
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            const currentUrl = new URL(window.location.href);
-                            currentUrl.searchParams.delete('toggle');
-                            window.location.replace(currentUrl.toString());
-                        } else {
-                            alert('Error: ' + (data.error || 'Unknown error'));
-                            console.error('Error toggling highlight:', data.error);
                         }
                     })
                     .catch(error => {
@@ -316,6 +303,75 @@
                     }
                 }
             });
+
+            // Set Draft Order Button
+            const setDraftOrderBtn = document.getElementById('set-draft-order-btn');
+            if (setDraftOrderBtn) {
+                setDraftOrderBtn.addEventListener('click', function() {
+                    const visiblePlayerIds = [];
+                    const allVisibleRows = ratingsTableBody.querySelectorAll('tr');
+
+                    allVisibleRows.forEach(row => {
+                        // Check if the row is currently visible (not display: none)
+                        if (row.style.display !== 'none') {
+                            const playerId = row.getAttribute('data-player-id');
+                            if (playerId && playerId !== 'TEAM_AVERAGE_ROW') {
+                                visiblePlayerIds.push(playerId);
+                            }
+                        }
+                    });
+
+                    const url = "{% url 'set_draft_order' %}";
+                    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+                    const formData = new FormData();
+                    visiblePlayerIds.forEach(id => formData.append('player_order[]', id));
+                    formData.append('csrfmiddlewaretoken', csrfToken);
+
+                    fetch(url, {
+                        method: 'POST',
+                        body: formData,
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            alert(data.message);
+                            reloadWithoutToggle(); // Reload to see the new draft positions
+                        } else {
+                            alert('Error: ' + data.error);
+                        }
+                    });
+                });
+            }
+
+            // Toggle Categories Button
+            const toggleCategoriesForm = document.getElementById('toggle-categories-form');
+            if (toggleCategoriesForm) {
+                toggleCategoriesForm.addEventListener('submit', function(event) {
+                    event.preventDefault(); // Prevent the default form submission
+
+                    const url = this.action;
+                    const csrfToken = this.querySelector('[name=csrfmiddlewaretoken]').value;
+
+                    fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': csrfToken,
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // Reload the page to reflect the change
+                            window.location.reload();
+                        } else {
+                            alert('Error toggling categories: ' + (data.error || 'Unknown error'));
+                        }
+                    })
+                    .catch(error => console.error('Error toggling categories:', error));
+                });
+            }
         });
     </script>
 {% endblock %}

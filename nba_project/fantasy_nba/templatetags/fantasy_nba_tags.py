@@ -2,17 +2,11 @@ from django import template
 
 register = template.Library()
 
-@register.filter
-def get_item(dictionary, key):
+@register.filter(name='is_rating_column')
+def is_rating_column(column_name):
     """
-    Allows accessing dictionary items with a variable key in Django templates.
-    Example: {{ my_dict|get_item:my_key_variable }}
+    Checks if a given column name corresponds to a rating column.
     """
-    if hasattr(dictionary, 'get'):
-        return dictionary.get(key)
-    return None
-
-@register.filter
-def is_styled_cell(cell_data):
-    """Checks if cell_data is the styled dictionary {'value': ..., 'css_class': ...}"""
-    return isinstance(cell_data, dict) and 'value' in cell_data and 'css_class' in cell_data
+    if not isinstance(column_name, str):
+        return False
+    return column_name.endswith(('_Rating', '_Available_Rating', '_Combined_Rating'))

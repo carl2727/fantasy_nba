@@ -14,6 +14,9 @@ urlpatterns = [
     path('update_player_status/', views.update_player_status, name='update_player_status'),
     path('move_draft_pick/', views.move_draft_pick, name='move_draft_pick'),
     path('toggle_highlight/', views.toggle_highlight, name='toggle_highlight'),
+    path('toggle_injured/', views.toggle_injured, name='toggle_injured'),
+    path('toggle_categories/', views.toggle_categories, name='toggle_categories'),
+    path('set_draft_order/', views.set_draft_order, name='set_draft_order'),
     
     path('accounts/logout/', views.logout_view, name='logout'),
     path('accounts/login_register/', views.login_register, name='login_register'),

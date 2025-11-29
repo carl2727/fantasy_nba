@@ -127,11 +127,12 @@ nav ul li a:focus {
 
 .bg-green {
     background-color: var(--color-status-green);
-
+    color: var(--color-text-light);
 }
+
 .bg-light-green {
     background-color: var(--color-status-light-green);
-
+    color: var(--color-text-black);
 }
 
 .bg-dark-red {
@@ -139,17 +140,55 @@ nav ul li a:focus {
     color: var(--color-text-light);
 }
 
-.bg-red {
-    background-color: var(--color-status-red);
-    color: var(--color-text-light);
-}
 .bg-light-red {
     background-color: var(--color-status-light-red);
 
 }
+
 .bg-grey {
-    background-color: var(--color-status-grey-bg);
+    background-color: #bdbdbd;
     color: var(--color-text-black);
+}
+
+.bg-dark-grey {
+    background-color: #808080;
+    color: var(--color-text-light);
+}
+
+/* Rating Heatmap Colors */
+.bg-light-grey {
+    background-color: #e0e0e0;
+    color: var(--color-text-black);
+}
+
+.bg-red {
+    background-color: var(--color-status-red);
+    color: var(--color-text-light);
+}
+
+.bg-blue {
+    background-color: #4a90e2;
+    color: var(--color-text-light);
+}
+
+.bg-yellow {
+    background-color: #f5d76e;
+    color: var(--color-text-black);
+}
+
+.bg-orange {
+    background-color: #f39c12;
+    color: var(--color-text-light);
+}
+
+.bg-pink {
+    background-color: #e91e63;
+    color: var(--color-text-light);
+}
+
+.bg-purple {
+    background-color: #9c27b0;
+    color: var(--color-text-light);
 }
 
 .header-big {
