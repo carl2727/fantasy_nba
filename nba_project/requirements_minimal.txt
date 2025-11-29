@@ -1,0 +1,7 @@
+Django==5.0.4
+pandas>=2.0.0
+nba-api>=1.0.0
+requests>=2.31.0
+numpy>=1.24.0,<2.0.0
+python-dateutil>=2.8.0
+pytz>=2023.3
