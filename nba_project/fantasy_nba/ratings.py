@@ -145,6 +145,12 @@ stats.rename(columns={'DISPLAY_FIRST_LAST': 'Name'}, inplace=True)
 if 'PERSON_ID' in stats.columns: # Drop PERSON_ID only if it exists after the merge
     stats.drop(columns=['PERSON_ID'], inplace=True)
 
+# Check if there are any players with missing names
+missing_names = stats[stats['Name'].isna()]
+if not missing_names.empty:
+    print(f"WARNING: {len(missing_names)} players with missing names (Player IDs: {missing_names['Player_ID'].unique().tolist()[:10]})")
+print(f"Total players loaded: {stats['Player_ID'].nunique()}")
+
 def calc_fgn_ftn(stats):
     stats['FGPM'] = stats['FGM'] - (stats['FGA'] - stats['FGM'])
     stats['FGN'] = stats['FGPM'] - stats['FGPM'].min()
