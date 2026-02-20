@@ -1,0 +1,38 @@
+name: Update NBA Game Logs
+
+on:
+  schedule:
+    # Läuft täglich um 6:00 UTC (7:00 CET / 8:00 CEST)
+    - cron: '0 6 * * *'
+  workflow_dispatch:  # Ermöglicht manuelles Ausführen
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        
+    - name: Install Dependencies
+      run: |
+        pip install pandas nba_api
+        
+    - name: Run Update Script
+      run: |
+        python update_nba_game_logs.py
+        
+    - name: Commit and Push Changes
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        git add all_player_game_stats_2025_2026.csv
+        git diff --staged --quiet || git commit -m "Auto-update: NBA game logs $(date +'%Y-%m-%d %H:%M')"
+        git push
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

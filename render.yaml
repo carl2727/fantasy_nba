@@ -28,3 +28,17 @@ services:
         value: 2
       - key: RENDER_EXTERNAL_HOSTNAME
         sync: false
+
+  - type: cron
+    name: nba-game-logs-updater
+    runtime: python
+    schedule: "0 6 * * *"  # Läuft täglich um 6:00 UTC (7:00 CET / 8:00 CEST)
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python update_nba_game_logs.py"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nba_project_db
+          property: connectionString

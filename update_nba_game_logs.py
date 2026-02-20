@@ -6,8 +6,8 @@ import os
 
 # --- Configuration ---
 TARGET_SEASON_API_FORMAT = "2025-26"  # Season format for the NBA API
-# This is the base path from your context
-BASE_PROJECT_PATH = "c:/Users/Carl/OneDrive/Code Projects/fantasy_nba/"
+# Flexibler Pfad: Verwendet das aktuelle Verzeichnis des Scripts
+BASE_PROJECT_PATH = os.path.dirname(os.path.abspath(__file__))
 GAME_LOGS_CSV_FILENAME = "all_player_game_stats_2025_2026.csv"
 GAME_LOGS_CSV_FULL_PATH = os.path.join(BASE_PROJECT_PATH, GAME_LOGS_CSV_FILENAME)
 
