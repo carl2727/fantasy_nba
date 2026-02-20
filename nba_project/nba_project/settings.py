@@ -31,9 +31,19 @@ DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 # Get RENDER_EXTERNAL_HOSTNAME from environment or use default hosts
 RENDER_EXTERNAL_HOSTNAME = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
 if RENDER_EXTERNAL_HOSTNAME:
-    ALLOWED_HOSTS = [RENDER_EXTERNAL_HOSTNAME, '.onrender.com', 'localhost', '127.0.0.1']
+    ALLOWED_HOSTS = [RENDER_EXTERNAL_HOSTNAME, 'localhost', '127.0.0.1']
 else:
-    ALLOWED_HOSTS = ['carlrolfes.pythonanywhere.com', 'localhost', '127.0.0.1', '.onrender.com']
+    ALLOWED_HOSTS = ['localhost', '127.0.0.1']
+
+# Always allow .onrender.com domains
+ALLOWED_HOSTS.extend(['.onrender.com', 'carlrolfes.pythonanywhere.com'])
+
+# In development or for debugging, allow all hosts
+if DEBUG:
+    ALLOWED_HOSTS.append('*')
+
+print(f"DEBUG MODE: {DEBUG}")
+print(f"ALLOWED_HOSTS: {ALLOWED_HOSTS}")
 
 # CSRF settings for production
 CSRF_TRUSTED_ORIGINS = [

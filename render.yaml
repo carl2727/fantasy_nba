@@ -10,7 +10,7 @@ services:
     plan: free
     rootDir: nba_project
     buildCommand: "chmod +x build.sh && ./build.sh"
-    startCommand: "gunicorn --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120 --access-logfile - --error-logfile - nba_project.wsgi:application"
+    startCommand: "gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 120 --access-logfile - --error-logfile - --log-level info nba_project.wsgi:application"
     healthCheckPath: /health/
     autoDeploy: false
     envVars:

@@ -7,6 +7,8 @@ from django.contrib.auth import login, authenticate, logout
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import HttpRequest, JsonResponse, Http404, HttpResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
 from . import ratings as ratings_data_module
 from .models import Team, TeamPlayer, DraftPick
 from django.db import transaction
@@ -19,7 +21,9 @@ import os
 # Get an instance of a logger
 logger = logging.getLogger(__name__)
 
-# Health check endpoint for Render
+# Health check endpoint for Render - no auth, no CSRF, no database
+@csrf_exempt
+@require_http_methods(["GET", "HEAD"])
 def health_check(request):
     """Simple health check endpoint that doesn't require database access"""
     return HttpResponse("OK", content_type="text/plain", status=200)
