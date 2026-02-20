@@ -1,0 +1,22 @@
+# Ignore large data files during build
+*.csv
+venv/
+.venv/
+__pycache__/
+*.pyc
+.git/
+.vscode/
+.idea/
+*.log
+db.sqlite3
+staticfiles/
+media/
+
+# Jupyter files
+*.ipynb
+.ipynb_checkpoints/
+
+# Test files
+tests/
+test_*.py
+*_test.py

@@ -29,7 +29,7 @@ nba_project
 ### Environment Variables (manuell hinzufügen):
 - `SECRET_KEY` = (Auto-generieren lassen)
 - `DEBUG` = `False`
-- `PYTHON_VERSION` = `3.11.0`
+- `PYTHON_VERSION` = `3.11.9`
 - `DATABASE_URL` = (Von PostgreSQL-Datenbank verknüpfen)
 - `WEB_CONCURRENCY` = `2`
 - `RENDER_EXTERNAL_HOSTNAME` = (Automatisch von Render gesetzt)
@@ -38,6 +38,7 @@ nba_project
 - **Plan**: Free
 - **Branch**: main
 - **Runtime**: Python 3
+- **Python Version**: 3.11.9 (via runtime.txt)
 - **Auto-Deploy**: No (bei Blueprint)
 
 ### PostgreSQL Datenbank (separat erstellen):
@@ -51,6 +52,12 @@ nba_project
 
 ### Problem: "Application Loading" Loop
 **Lösung**: Der Health Check Endpoint `/health/` wurde hinzugefügt. Dieser antwortet schnell ohne Datenbankzugriff.
+
+### Problem: pandas compilation error (Python 3.14)
+**Lösung**: 
+- `runtime.txt` mit `python-3.11.9` erstellt
+- `requirements_production.txt` mit nur notwendigen Paketen
+- Binary wheels werden bevorzugt installiert
 
 ### Problem: ALLOWED_HOSTS Fehler
 **Lösung**: RENDER_EXTERNAL_HOSTNAME wird automatisch gesetzt und in ALLOWED_HOSTS verwendet.
