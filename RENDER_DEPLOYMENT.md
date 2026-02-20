@@ -53,11 +53,18 @@ nba_project
 ### Problem: "Application Loading" Loop
 **Lösung**: Der Health Check Endpoint `/health/` wurde hinzugefügt. Dieser antwortet schnell ohne Datenbankzugriff.
 
-### Problem: pandas compilation error (Python 3.14)
+### Problem: pandas compilation error (Python 3.14/3.11)
 **Lösung**: 
 - `runtime.txt` mit `python-3.11.9` erstellt
-- `requirements_production.txt` mit nur notwendigen Paketen
-- Binary wheels werden bevorzugt installiert
+- Pandas auf 2.0.3 downgraded (stabile Version mit garantierten Wheels)
+- Numpy auf 1.24.3 downgraded
+- `--only-binary=:all:` Flag erzwingt pre-built wheels
+- Build-Script installiert numpy/pandas separat vor anderen Paketen
+
+**Wichtig**: Wenn der Build weiterhin fehlschlägt:
+1. In Render: "Clear build cache & deploy"
+2. Überprüfen Sie die Logs für die Python-Version
+3. Falls nötig: `build_alternative.sh` zu `build.sh` umbenennen
 
 ### Problem: ALLOWED_HOSTS Fehler
 **Lösung**: RENDER_EXTERNAL_HOSTNAME wird automatisch gesetzt und in ALLOWED_HOSTS verwendet.
