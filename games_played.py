@@ -33,7 +33,7 @@ teams_map = {
     "CHA": 1610612766,
 }
 
-game_stats_file = "all_player_game_stats_2024_2025.csv"
+game_stats_file = "all_player_game_stats_2025_2026.csv"
 game_stats = pd.read_csv(game_stats_file)
 players_file = "nba_players.csv"
 players = pd.read_csv(players_file)

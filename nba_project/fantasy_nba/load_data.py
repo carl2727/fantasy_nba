@@ -7,9 +7,9 @@ OUTPUT_DIR = Path(__file__).resolve().parent.parent / 'data'
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 PLAYERS_CSV_PATH = OUTPUT_DIR / 'nba_players.csv'
-GAME_STATS_CSV_PATH = OUTPUT_DIR / 'all_player_game_stats_2024_2025.csv'
+GAME_STATS_CSV_PATH = OUTPUT_DIR / 'all_player_game_stats_2025_2026.csv'
 
-seasons = ['2024-25']
+seasons = ['2025-26']
 season_type = 'Regular Season'
 
 # 1. Load existing data if it exists

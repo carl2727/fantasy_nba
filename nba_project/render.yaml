@@ -1,0 +1,22 @@
+databases:
+  - name: nba_project_db
+    databaseName: nba_project_db
+    user: nba_project_user
+
+services:
+  - type: web
+    name: nba-project
+    runtime: python
+    buildCommand: "./build.sh"
+    startCommand: "gunicorn nba_project.wsgi:application"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nba_project_db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: False

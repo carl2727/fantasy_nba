@@ -5,10 +5,10 @@ import time
 import os
 
 # --- Configuration ---
-TARGET_SEASON_API_FORMAT = "2024-25"  # Season format for the NBA API
+TARGET_SEASON_API_FORMAT = "2025-26"  # Season format for the NBA API
 # This is the base path from your context
-BASE_PROJECT_PATH = "c:/Users/carlr/OneDrive/Code Projects/fantasy_nba_django/"
-GAME_LOGS_CSV_FILENAME = "all_player_game_stats.csv"
+BASE_PROJECT_PATH = "c:/Users/Carl/OneDrive/Code Projects/fantasy_nba/"
+GAME_LOGS_CSV_FILENAME = "all_player_game_stats_2025_2026.csv"
 GAME_LOGS_CSV_FULL_PATH = os.path.join(BASE_PROJECT_PATH, GAME_LOGS_CSV_FILENAME)
 
 # Define the expected columns for the CSV to ensure consistency and order
@@ -19,7 +19,7 @@ EXPECTED_COLUMNS = [
 ]
 # Season start date (approximate, adjust if needed for the specific season)
 # This is used if the CSV is empty.
-SEASON_START_DATE = datetime(2024, 10, 1) 
+SEASON_START_DATE = datetime(2025, 10, 1) 
 
 def load_existing_gamelogs(filepath):
     """Loads existing game logs from a CSV file."""

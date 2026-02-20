@@ -2,12 +2,12 @@
 from nba_api.stats.endpoints import LeagueGameLog
 import pandas as pd
 
-TARGET_SEASON_API_FORMAT = "2024-25"
-# Adjust these dates to a period where you know games occurred for the 2024-25 season
+TARGET_SEASON_API_FORMAT = "2025-26"
+# Adjust these dates to a period where you know games occurred for the 2025-26 season
 # For testing, a single day is often sufficient.
-# Example: If the season started Oct 22, 2024, you could use that.
-date_from_str = "2024-10-22" # Replace with an actual game date
-date_to_str = "2024-10-22"   # Replace with an actual game date
+# Example: If the season started Oct 22, 2025, you could use that.
+date_from_str = "2025-10-22" # Replace with an actual game date
+date_to_str = "2025-10-22"   # Replace with an actual game date
 
 print(f"Fetching NBA game logs for season {TARGET_SEASON_API_FORMAT} from {date_from_str} to {date_to_str}...")
 try:

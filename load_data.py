@@ -3,7 +3,7 @@ import pandas as pd
 import time
 import requests
 
-seasons = ['2024-25']
+seasons = ['2025-26']
 season_type = 'Regular Season'
 
 all_players = CommonAllPlayers(is_only_current_season=1)
@@ -27,7 +27,7 @@ for season in seasons:
 
 if all_game_data:
     combined_game_data = pd.concat(all_game_data, ignore_index=True)
-    combined_game_data.to_csv('all_player_game_stats_2024_2025.csv', index=False)
-    print("All game data saved to all_player_game_stats_2024_2025.csv")
+    combined_game_data.to_csv('all_player_game_stats_2025_2026.csv', index=False)
+    print("All game data saved to all_player_game_stats_2025_2026.csv")
 else:
     print("No game data was fetched.")
