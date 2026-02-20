@@ -40,6 +40,31 @@ def get_data_last_updated():
     except Exception as e:
         logger.warning(f"Could not get data update timestamp: {e}")
     return None
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def admin_reset_database(request):
+    """
+    Admin endpoint to reset database. Requires SECRET_KEY as POST parameter.
+    Usage: POST to /admin_reset/ with key=YOUR_SECRET_KEY
+    """
+    from django.core.management import call_command
+    
+    # Get the secret key from POST data
+    provided_key = request.POST.get('key', '')
+    expected_key = settings.SECRET_KEY
+    
+    if provided_key != expected_key:
+        return HttpResponse("Unauthorized", status=401)
+    
+    try:
+        # Flush the database (delete all data, keep schema)
+        call_command('flush', '--no-input', verbosity=0)
+        return HttpResponse("Database reset successful", status=200)
+    except Exception as e:
+        logger.error(f"Database reset failed: {e}")
+        return HttpResponse(f"Error: {str(e)}", status=500)
+
 COLUMN_DISPLAY_NAMES = {
     'Name': 'Name',
     'POS': 'POS',

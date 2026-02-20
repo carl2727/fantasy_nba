@@ -18,6 +18,9 @@ urlpatterns = [
     path('toggle_categories/', views.toggle_categories, name='toggle_categories'),
     path('set_draft_order/', views.set_draft_order, name='set_draft_order'),
     
+    # Admin endpoint for database reset (Render free tier without shell access)
+    path('admin_reset/', views.admin_reset_database, name='admin_reset_database'),
+    
     path('accounts/logout/', views.logout_view, name='logout'),
     path('accounts/login_register/', views.login_register, name='login_register'),
     path('accounts/', include('django.contrib.auth.urls')),
