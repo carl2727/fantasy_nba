@@ -30,6 +30,11 @@ DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
 ALLOWED_HOSTS = ['carlrolfes.pythonanywhere.com', 'localhost', '127.0.0.1', '.onrender.com']
 
+# CSRF settings for production
+CSRF_TRUSTED_ORIGINS = [
+    'https://*.onrender.com',
+]
+
 
 # Application definition
 

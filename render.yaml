@@ -8,6 +8,7 @@ services:
     name: nba-project
     runtime: python
     plan: free
+    rootDir: nba_project
     buildCommand: "chmod +x build.sh && ./build.sh"
     startCommand: "gunicorn --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120 nba_project.wsgi:application"
     healthCheckPath: /
