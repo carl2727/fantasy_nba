@@ -28,7 +28,12 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-gp95(*o11a!xfrsb-ig)=
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = ['carlrolfes.pythonanywhere.com', 'localhost', '127.0.0.1', '.onrender.com']
+# Get RENDER_EXTERNAL_HOSTNAME from environment or use default hosts
+RENDER_EXTERNAL_HOSTNAME = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
+if RENDER_EXTERNAL_HOSTNAME:
+    ALLOWED_HOSTS = [RENDER_EXTERNAL_HOSTNAME, '.onrender.com', 'localhost', '127.0.0.1']
+else:
+    ALLOWED_HOSTS = ['carlrolfes.pythonanywhere.com', 'localhost', '127.0.0.1', '.onrender.com']
 
 # CSRF settings for production
 CSRF_TRUSTED_ORIGINS = [

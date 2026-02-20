@@ -6,7 +6,7 @@ from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.contrib.auth import login, authenticate, logout
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
-from django.http import HttpRequest, JsonResponse, Http404
+from django.http import HttpRequest, JsonResponse, Http404, HttpResponse
 from . import ratings as ratings_data_module
 from .models import Team, TeamPlayer, DraftPick
 from django.db import transaction
@@ -18,6 +18,11 @@ import os
 
 # Get an instance of a logger
 logger = logging.getLogger(__name__)
+
+# Health check endpoint for Render
+def health_check(request):
+    """Simple health check endpoint that doesn't require database access"""
+    return HttpResponse("OK", content_type="text/plain", status=200)
 COLUMN_DISPLAY_NAMES = {
     'Name': 'Name',
     'POS': 'POS',
