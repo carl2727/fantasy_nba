@@ -65,6 +65,9 @@
             <button type="submit" class="btn btn-secondary btn-sm">
                 {% if show_categories %}Hide Categories{% else %}Show Categories{% endif %}
             </button>
+            {% if data_last_updated %}
+            <span style="font-size: 0.75em; color: #666; margin-left: 8px;">Daten aktualisiert am {{ data_last_updated }}</span>
+            {% endif %}
         </form>
         {% if active_team %}
         <button id="set-draft-order-btn" class="btn btn-info btn-sm">

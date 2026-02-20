@@ -17,6 +17,7 @@ from django.conf import settings
 import pandas as pd
 import logging
 import os
+from datetime import datetime
 
 # Get an instance of a logger
 logger = logging.getLogger(__name__)
@@ -27,6 +28,18 @@ logger = logging.getLogger(__name__)
 def health_check(request):
     """Simple health check endpoint that doesn't require database access"""
     return HttpResponse("OK", content_type="text/plain", status=200)
+
+def get_data_last_updated():
+    """Get the last modification date of the game stats CSV file."""
+    try:
+        # Path to the CSV file relative to the fantasy_nba app directory
+        csv_path = os.path.join(os.path.dirname(__file__), 'data', 'all_player_game_stats_2025_2026.csv')
+        if os.path.exists(csv_path):
+            timestamp = os.path.getmtime(csv_path)
+            return datetime.fromtimestamp(timestamp).strftime('%d.%m.%Y')
+    except Exception as e:
+        logger.warning(f"Could not get data update timestamp: {e}")
+    return None
 COLUMN_DISPLAY_NAMES = {
     'Name': 'Name',
     'POS': 'POS',
@@ -687,6 +700,7 @@ def show_ratings(request: HttpRequest):
         'injured_player_ids': injured_player_ids,
         'show_categories': show_categories,
         'category_columns': category_columns,
+        'data_last_updated': get_data_last_updated(),
     }
     return render(request, 'fantasy_nba/show_ratings.html', context)
 
