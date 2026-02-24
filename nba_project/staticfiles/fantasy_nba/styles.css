@@ -1,0 +1,353 @@
+:root {
+    --font-stack-system: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    --font-stack-helvetica: Helvetica, Sans-Serif;
+
+    --color-background-main: #f4f4f4;
+    --color-text-primary: #333;
+    --color-text-secondary: #1a1a1a;
+    --color-text-light: #ffffff;
+    --color-text-black: black;
+
+    --color-grey1: #DEDEDE;
+    --color-nav-border: #e0e0e0;
+    --color-nav-link: #4d4d4d;
+    --color-nav-link-hover: #636d7a;
+    --color-nav-link-hover-text: #ffffff;
+
+    --color-table-border: #ddd;
+    --color-table-header-bg: #9c9c9c;
+
+    --color-status-dark-green: #18ac18;
+    --color-status-green: #68ce68;
+    --color-status-light-green: #aae2aa;
+    --color-status-dark-red: #ff493c;
+    --color-status-red: #ff806a;
+    --color-status-light-red: #ffc5ab;
+    --color-status-grey-bg: #f0f0f0;
+
+    --color-content-bg: #fdfdfd;
+    --color-separator-light: #eee;
+}
+
+body {
+    font-family: var(--font-stack-system);
+    margin: 0;
+    padding: 0;
+    background-color: var(--color-background-main);
+    color: var(--color-text-primary);
+}
+
+/* Navbar styles */
+nav {
+    background-color: var(--color-grey1);
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--color-nav-border);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    text-align: center;
+}
+
+nav ul {
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
+    display: inline-block;
+}
+
+nav ul li {
+    display: inline-block;
+    margin: 0 20px;
+    font-weight:500;
+    font-size: 1.4em;
+}
+
+nav ul li a {
+    text-decoration: none;
+    color: var(--color-nav-link);
+    padding: 10px 15px;
+    border-radius: 4px;
+    transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
+}
+
+nav ul li a:hover,
+nav ul li a:focus {
+    background-color: var(--color-nav-link-hover);
+    color: var(--color-nav-link-hover-text);
+}
+
+.content {
+    padding: 20px; /* Add some padding to the main content area */
+}
+
+/* Styles for the main ratings table (scoped with .styled-table) */
+.styled-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px; /* Add some margin for separation */
+    margin-bottom: 20px;
+}
+.styled-table th, 
+.styled-table td {
+    border: 1px solid var(--color-table-border);
+    padding: 10px 12px; /* Increased padding for better spacing */
+    text-align: center;
+    box-sizing: border-box;
+}
+.styled-table th {
+    background-color: var(--color-grey1);
+    color: var(--color-text-primary);
+    max-width: 150px;
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+    line-height: 1.3em;
+    vertical-align: middle;
+}
+.styled-table th a {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+}
+.styled-table .sort-asc::after {
+    content: " ▲";
+}
+.styled-table .sort-desc::after {
+    content: " ▼";
+}
+/* 
+   The rule `tbody { display: table-row-group; }` is the default browser rendering for tbody,
+   so it's often not necessary to explicitly state it unless overriding another display property.
+   I'll keep it commented out for now unless there's a specific reason for it.
+*/
+/* .styled-table tbody { display: table-row-group; } */
+
+.bg-dark-green {
+    background-color: var(--color-status-dark-green);
+    color: var(--color-text-light);
+}
+
+.bg-green {
+    background-color: var(--color-status-green);
+    color: var(--color-text-light);
+}
+
+.bg-light-green {
+    background-color: var(--color-status-light-green);
+    color: var(--color-text-black);
+}
+
+.bg-dark-red {
+    background-color: var(--color-status-dark-red);
+    color: var(--color-text-light);
+}
+
+.bg-light-red {
+    background-color: var(--color-status-light-red);
+
+}
+
+.bg-grey {
+    background-color: #bdbdbd;
+    color: var(--color-text-black);
+}
+
+.bg-dark-grey {
+    background-color: #808080;
+    color: var(--color-text-light);
+}
+
+/* Rating Heatmap Colors */
+.bg-light-grey {
+    background-color: #e0e0e0;
+    color: var(--color-text-black);
+}
+
+.bg-red {
+    background-color: var(--color-status-red);
+    color: var(--color-text-light);
+}
+
+.bg-blue {
+    background-color: #4a90e2;
+    color: var(--color-text-light);
+}
+
+.bg-yellow {
+    background-color: #f5d76e;
+    color: var(--color-text-black);
+}
+
+.bg-orange {
+    background-color: #f39c12;
+    color: var(--color-text-light);
+}
+
+.bg-pink {
+    background-color: #e91e63;
+    color: var(--color-text-light);
+}
+
+.bg-purple {
+    background-color: #9c27b0;
+    color: var(--color-text-light);
+}
+
+.header-big {
+    font-family: var(--font-stack-helvetica);
+    font-size: 2rem;
+    font-weight: bold;
+    margin-bottom: 1rem;
+    text-align: center;
+    color: var(--color-text-primary);
+}
+
+.project-explanation-content {
+    font-family: var(--font-stack-system); /* Modern system font stack */
+    line-height: 1.7; /* Increased line height for better readability */
+    color: var(--color-text-primary); /* Dark gray for text, easier on the eyes than pure black */
+    max-width: 800px; /* Limits line length, which aids reading */
+    margin: 20px auto; /* Centers the content block and adds top/bottom margin */
+    padding: 20px 30px; /* Padding inside the content block */
+    background-color: #fdfdfd; /* A very light background, if desired, or transparent */
+    border-radius: 4px; /* Optional: slightly rounded corners */
+}
+
+.project-explanation-content h2 {
+    font-size: 1.8em; /* Larger heading size */
+    color: var(--color-text-secondary); /* Very dark gray for headings */
+    margin-top: 40px; /* More space above headings */
+    margin-bottom: 20px; /* Space below headings, before paragraphs */
+    padding-bottom: 10px; /* Space for the border */
+    border-bottom: 2px solid var(--color-separator-light); /* Subtle separator line for headings */
+}
+
+.project-explanation-content h2:first-child {
+    margin-top: 0; /* Remove top margin for the very first heading */
+}
+
+.project-explanation-content p {
+    font-size: 1rem; /* Standard paragraph font size */
+    margin-bottom: 18px; /* Space between paragraphs */
+    text-align: left; /* Standard left alignment is often best for readability */
+    /*
+    Consider 'text-align: justify;' if you prefer, but be mindful of potential
+    uneven spacing ("rivers") between words in some browsers/text.
+    */
+}
+
+/* Add this to your styles.css file */
+
+.form-wrapper {
+    max-width: 500px; /* Adjust this to control the width of the form container */
+    margin: 30px auto; /* This centers the div horizontally and adds some top/bottom margin */
+    padding: 25px;     /* Adds some spacing inside the wrapper, around the form */
+    text-align: center; /* Centers the button and the text within the form's paragraphs */
+    background-color: var(--color-content-bg, #fdfdfd); /* Optional: background color */
+    border: 1px solid var(--color-separator-light, #eee); /* Optional: border */
+    border-radius: 8px; /* Optional: rounded corners */
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05); /* Optional: subtle shadow for depth */
+}
+
+/* Optional: Adjust spacing for form elements generated by {{ form.as_p }} */
+.form-wrapper form p {
+    margin-bottom: 15px;
+}
+
+/* Optional: Style the submit button */
+.form-wrapper form button[type="submit"] {
+    padding: 10px 20px;
+    font-size: 1em;
+    /* You can use your color variables here, e.g.: */
+    /* background-color: var(--color-nav-link-hover-bg); */
+    /* color: var(--color-text-light); */
+    /* border: none; */
+    /* border-radius: 4px; */
+    cursor: pointer;
+}
+
+.auth-form {
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 2px 16px rgba(0,0,0,0.07);
+    padding: 2rem 2.5rem;
+    margin: 1rem 0;
+    width: 100%;
+    max-width: 350px;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+.auth-form h2 {
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    text-align: center;
+}
+.auth-form input[type="text"],
+.auth-form input[type="password"] {
+    width: 100%;
+    padding: 0.6rem;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-size: 1rem;
+    background: #fafbfc;
+    transition: border 0.2s;
+}
+.auth-form input:focus {
+    border: 1.5px solid #007bff;
+    outline: none;
+}
+.auth-form button {
+    background: #007bff;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    padding: 0.7rem;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.auth-form button:hover {
+    background: #0056b3;
+}
+
+.auth-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center; /* Center horizontally */
+    justify-content: center; /* Center vertically */
+    margin-bottom: 20px; /* Add some space between the containers */
+}
+
+/* Remove bullet points from lists within authentication forms (e.g., team selection) */
+.auth-container .auth-form ul {
+    list-style-type: none; /* Removes the default bullet points */
+    padding-left: 0;       /* Removes the default left padding for lists */
+    margin-top: 0.5rem;    /* Optional: add some top margin if needed */
+    margin-bottom: 0.5rem; /* Optional: add some bottom margin if needed */
+}
+
+.styled-table tbody tr:nth-child(even) {
+    background-color: #ededed;
+}
+.styled-table tbody tr:nth-child(odd) {
+    background-color: #f7f7f7;
+}
+.styled-table tbody tr:hover {
+    background-color: #d0d0d0;
+    transition: background 0.2s;
+}
+.styled-table th, .styled-table td {
+    padding: 6px 8px;
+    font-size: 0.95em;
+    height: 32px;
+}
+.styled-table th {
+    height: 34px;
+    font-size: 1em;
+}
+
+.styled-table tr, .styled-table th, .styled-table td, .styled-table tr.table-info {
+    height: 32px;
+    min-height: 32px;
+    max-height: 32px;
+}

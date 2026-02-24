@@ -66,13 +66,13 @@
             <button type="submit" class="btn btn-secondary btn-sm">
                 {% if show_categories %}Hide Categories{% else %}Show Categories{% endif %}
             </button>
+            <button type="button" id="compare-players-btn" class="btn btn-primary btn-sm" style="margin-left: 10px;">
+                Compare Players
+            </button>
             {% if data_last_updated %}
             <span style="font-size: 0.75em; color: #666; margin-left: 8px;">Data refreshed on {{ data_last_updated }}</span>
             {% endif %}
         </form>
-        <button id="compare-players-btn" class="btn btn-primary btn-sm" style="margin-left: 10px;">
-            Compare Players
-        </button>
         {% if active_team %}
         <button id="set-draft-order-btn" class="btn btn-info btn-sm">
             Set Draft Positions
