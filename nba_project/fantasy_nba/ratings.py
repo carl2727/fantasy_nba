@@ -169,20 +169,20 @@ for cat in categories:
 
 stats['TOV_RT'] = stats['TOV_RT'] * (-1) + 100
 
-ratings = stats[['Name', 'Player_ID', 'TEAM_ID', 'FGN_RT', 'FTN_RT', 'FG3M_RT', 'PTS_RT', 'REB_RT', 'AST_RT', 'BLK_RT', 'STL_RT', 'TOV_RT']]
+ratings = stats[['Name', 'Player_ID', 'TEAM_ID', 'FGN_RT', 'FTN_RT', 'FG3M_RT', 'PTS_RT', 'REB_RT', 'AST_RT', 'BLK_RT', 'STL_RT', 'TOV_RT']].copy()
 
-ratings.loc[:, 'Total_Rating'] = ratings[rating_columns].sum(axis=1)
-ratings.loc[:, 'Total_Rating'] = normalize(ratings['Total_Rating'])
+ratings['Total_Rating'] = ratings[rating_columns].sum(axis=1)
+ratings['Total_Rating'] = normalize(ratings['Total_Rating'])
 
-ratings.loc[:, 'Total_Available_Rating'] = ratings.apply(
+ratings['Total_Available_Rating'] = ratings.apply(
     lambda row: row['Total_Rating'] * player_availability_score.get(row['Player_ID'], 0),
     axis=1
 )
-ratings.loc[:, 'Total_Available_Rating'] = normalize(ratings['Total_Available_Rating'])
+ratings['Total_Available_Rating'] = normalize(ratings['Total_Available_Rating'])
 
 # Combined Rating
-ratings.loc[:, 'Combined_Rating'] = (ratings['Total_Rating'] + ratings['Total_Available_Rating']) / 2
-ratings.loc[:, 'Combined_Rating'] = normalize(ratings['Combined_Rating'])
+ratings['Combined_Rating'] = (ratings['Total_Rating'] + ratings['Total_Available_Rating']) / 2
+ratings['Combined_Rating'] = normalize(ratings['Combined_Rating'])
 
 # Weekly ratings
 schedule_files = [
@@ -208,7 +208,7 @@ if schedule_file is None:
     games_per_week = {}
     max_games_per_week = {}
 
-weekly_ratings = ratings[['Player_ID', 'Name', 'TEAM_ID', 'Total_Rating', 'Total_Available_Rating']]
+weekly_ratings = ratings[['Player_ID', 'Name', 'TEAM_ID', 'Total_Rating', 'Total_Available_Rating']].copy()
 for player in weekly_ratings['Player_ID']:
     team_id = weekly_ratings.loc[weekly_ratings['Player_ID'] == player, 'TEAM_ID'].values[0]
     if team_id not in games_per_week:
@@ -231,32 +231,40 @@ for i in range(1, 3):
 
 print("Punt Combos:", punt_combos)
 
+# Build all punt rating columns efficiently to avoid fragmentation
+punt_rating_cols = {}
 for punted_categories in punt_combos:
     remain_cols = [col for col in rating_columns if col not in punted_categories]
     if remain_cols:
         punt_name = "_Punt_" + "_".join(sorted([cat.replace('_RT', '') for cat in punted_categories]))
-        ratings.loc[:, f'Total{punt_name}_Rating'] = ratings[remain_cols].sum(axis=1)
-        ratings.loc[:, f'Total{punt_name}_Rating'] = normalize(ratings[f'Total{punt_name}_Rating'])
-
-        ratings.loc[:, f'Total{punt_name}_Available_Rating'] = ratings.apply(
-            lambda row: row[f'Total{punt_name}_Rating'] * player_availability_score.get(row['Player_ID'], 0),
+        
+        # Calculate Total Rating
+        total_rating = ratings[remain_cols].sum(axis=1)
+        punt_rating_cols[f'Total{punt_name}_Rating'] = normalize(total_rating)
+        
+        # Calculate Available Rating
+        available_rating = ratings.apply(
+            lambda row: punt_rating_cols[f'Total{punt_name}_Rating'][row.name] * player_availability_score.get(row['Player_ID'], 0),
             axis=1
         )
-        ratings.loc[:, f'Total{punt_name}_Available_Rating'] = normalize(ratings[f'Total{punt_name}_Available_Rating'])
-
-        # Punt Combined Rating (must be calculated after punted Overall and Performance ratings)
-        ratings.loc[:, f'Total{punt_name}_Combined_Rating'] = (ratings[f'Total{punt_name}_Rating'] + ratings[f'Total{punt_name}_Available_Rating']) / 2
-        ratings.loc[:, f'Total{punt_name}_Combined_Rating'] = normalize(ratings[f'Total{punt_name}_Combined_Rating'])
+        punt_rating_cols[f'Total{punt_name}_Available_Rating'] = normalize(available_rating)
+        
+        # Calculate Combined Rating
+        combined_rating = (punt_rating_cols[f'Total{punt_name}_Rating'] + punt_rating_cols[f'Total{punt_name}_Available_Rating']) / 2
+        punt_rating_cols[f'Total{punt_name}_Combined_Rating'] = normalize(combined_rating)
     else:
         print(f"Warning: All rating columns are punted in {punted_categories}. Skipping.")
 
+# Add all punt rating columns at once
+ratings = pd.concat([ratings, pd.DataFrame(punt_rating_cols, index=ratings.index)], axis=1)
+
 
 # Selecting relevant players
-ratings.sort_values('Total_Rating', ascending=False, inplace=True)
+ratings = ratings.sort_values('Total_Rating', ascending=False)
 player_selection = ratings['Player_ID'].head(200).tolist()
 
 # Save data
-weekly_ratings.sort_values('Total_Available_Rating', ascending=False, inplace=True)
+weekly_ratings = weekly_ratings.sort_values('Total_Available_Rating', ascending=False)
 weekly_ratings.to_csv('data/weekly_ratings.csv', index=False)
-ratings.sort_values('Total_Available_Rating', ascending=False, inplace=True)
+ratings = ratings.sort_values('Total_Available_Rating', ascending=False)
 ratings.to_csv('data/ratings.csv', index=False)

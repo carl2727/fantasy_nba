@@ -15,6 +15,8 @@ urlpatterns = [
     path('move_draft_pick/', views.move_draft_pick, name='move_draft_pick'),
     path('toggle_highlight/', views.toggle_highlight, name='toggle_highlight'),
     path('toggle_injured/', views.toggle_injured, name='toggle_injured'),
+    path('toggle_compare/', views.toggle_compare, name='toggle_compare'),
+    path('get_compare_data/', views.get_compare_data, name='get_compare_data'),
     path('toggle_categories/', views.toggle_categories, name='toggle_categories'),
     path('set_draft_order/', views.set_draft_order, name='set_draft_order'),
     

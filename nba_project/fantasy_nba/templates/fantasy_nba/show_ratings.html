@@ -12,6 +12,7 @@
 </style>
 <html>
 <head>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
     {% if messages %}
@@ -66,14 +67,31 @@
                 {% if show_categories %}Hide Categories{% else %}Show Categories{% endif %}
             </button>
             {% if data_last_updated %}
-            <span style="font-size: 0.75em; color: #666; margin-left: 8px;">Daten aktualisiert am {{ data_last_updated }}</span>
+            <span style="font-size: 0.75em; color: #666; margin-left: 8px;">Data refreshed on {{ data_last_updated }}</span>
             {% endif %}
         </form>
+        <button id="compare-players-btn" class="btn btn-primary btn-sm" style="margin-left: 10px;">
+            Compare Players
+        </button>
         {% if active_team %}
         <button id="set-draft-order-btn" class="btn btn-info btn-sm">
             Set Draft Positions
         </button>
         {% endif %}
+    </div>
+
+    <!-- Comparison Chart -->
+    <div id="compare-container" style="display: none; margin: 20px auto; max-width: 600px; background: white; padding: 20px; border: 1px solid #ddd; border-radius: 5px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h4 style="margin: 0;">Player Comparison</h4>
+            <button id="close-compare-btn" class="btn btn-sm btn-secondary">×</button>
+        </div>
+        <div id="compare-message" style="text-align: center; color: #666; margin: 20px 0;">
+            Select 2 players to compare
+        </div>
+        <div id="chart-wrapper" style="display: none; position: relative; height: 400px; width: 100%;">
+            <canvas id="compareChart"></canvas>
+        </div>
     </div>
 
     <table id="ratings-table" class="styled-table">
@@ -165,8 +183,21 @@
                                     <input type="hidden" name="status" value="UNAVAILABLE">
                                     <button type="submit" title="Make Unavailable">/</button>
                                 </form>
+                                <!-- Button to toggle comparison -->
+                                <button class="compare-toggle-btn" 
+                                        data-player-id="{{ player_id_val }}"
+                                        title="Compare Player"
+                                        style="{% if player_id_val in compare_player_ids %}background-color: #28a745; color: white;{% endif %}">
+                                    C
+                                </button>
                             {% else %}
-                                <!-- Optional: Message if no active team or user not authenticated -->
+                                <!-- Compare button for users without active team -->
+                                <button class="compare-toggle-btn" 
+                                        data-player-id="{{ player_id_val }}"
+                                        title="Compare Player"
+                                        style="{% if player_id_val in compare_player_ids %}background-color: #28a745; color: white;{% endif %}">
+                                    C
+                                </button>
                             {% endif %}
                         {% endif %}
                     </td>
@@ -374,6 +405,180 @@
                     })
                     .catch(error => console.error('Error toggling categories:', error));
                 });
+            }
+
+            // ============ COMPARE PLAYERS FUNCTIONALITY ============
+            let compareChart = null;
+            
+            // Handle compare toggle buttons (C button)
+            document.querySelectorAll('.compare-toggle-btn').forEach(btn => {
+                btn.addEventListener('click', function(event) {
+                    event.preventDefault();
+                    const playerId = this.dataset.playerId;
+                    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+                    fetch("{% url 'toggle_compare' %}", {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': csrfToken,
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: `player_id=${playerId}`
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // Toggle button visual state
+                            if (data.is_comparing) {
+                                this.style.backgroundColor = '#28a745';
+                                this.style.color = 'white';
+                            } else {
+                                this.style.backgroundColor = '';
+                                this.style.color = '';
+                            }
+                            // If compare container is open, refresh the chart
+                            if (compareContainer.style.display === 'block') {
+                                loadCompareData();
+                            }
+                        } else if (data.error) {
+                            alert(data.error);
+                        }
+                    })
+                    .catch(error => console.error('Error toggling compare:', error));
+                });
+            });
+
+            // Handle Compare Players button
+            const comparePlayersBtn = document.getElementById('compare-players-btn');
+            const compareContainer = document.getElementById('compare-container');
+            const closeCompareBtn = document.getElementById('close-compare-btn');
+            const compareMessage = document.getElementById('compare-message');
+            const chartWrapper = document.getElementById('chart-wrapper');
+            const compareChartCanvas = document.getElementById('compareChart');
+
+            if (comparePlayersBtn) {
+                comparePlayersBtn.addEventListener('click', function() {
+                    // Toggle visibility
+                    if (compareContainer.style.display === 'none') {
+                        compareContainer.style.display = 'block';
+                        loadCompareData();
+                    } else {
+                        compareContainer.style.display = 'none';
+                    }
+                });
+            }
+
+            if (closeCompareBtn) {
+                closeCompareBtn.addEventListener('click', function() {
+                    compareContainer.style.display = 'none';
+                });
+            }
+
+            function loadCompareData() {
+                fetch("{% url 'get_compare_data' %}", {
+                    method: 'GET',
+                })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Compare data response:', data);
+                    if (data.success) {
+                        compareMessage.style.display = 'none';
+                        chartWrapper.style.display = 'block';
+                        renderCompareChart(data.data, data.categories, data.labels || null);
+                    } else {
+                        // Show message but keep chart if it exists
+                        compareMessage.style.display = 'block';
+                        compareMessage.textContent = data.error || 'Select 2 players to compare';
+                        // Only hide canvas if we're destroying the chart
+                        if (compareChart) {
+                            compareChart.destroy();
+                            compareChart = null;
+                            chartWrapper.style.display = 'none';
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading compare data:', error);
+                    compareMessage.style.display = 'block';
+                    compareMessage.textContent = 'Error loading comparison data';
+                });
+            }
+
+            function renderCompareChart(playersData, categories, categoryLabels) {
+                const ctx = compareChartCanvas.getContext('2d');
+                
+                // Debug: Log the data
+                console.log('Players Data:', playersData);
+                console.log('Categories:', categories);
+                console.log('Category Labels:', categoryLabels);
+                
+                // Destroy existing chart if it exists
+                if (compareChart) {
+                    compareChart.destroy();
+                }
+
+                // Use provided labels or clean up category names
+                const labels = categoryLabels || categories.map(cat => cat.replace('_RT', '').replace('N', '%'));
+                
+                // Prepare datasets for each player
+                const datasets = playersData.map((player, index) => {
+                    const borderColors = ['rgb(54, 162, 235)', 'rgb(255, 99, 132)'];
+                    const backgroundColors = ['rgba(54, 162, 235, 0.1)', 'rgba(255, 99, 132, 0.1)'];
+                    const playerValues = categories.map(cat => {
+                        const rawValue = Number(player.stats[cat]);
+                        return Number.isFinite(rawValue) ? rawValue : 0;
+                    });
+                    
+                    return {
+                        label: player.name,
+                        data: playerValues,
+                        fill: false,  // Disable fill to show only lines
+                        backgroundColor: backgroundColors[index],
+                        borderColor: borderColors[index],
+                        borderWidth: 3,
+                        pointBackgroundColor: borderColors[index],
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: borderColors[index],
+                        pointRadius: 5,
+                        pointHoverRadius: 7
+                    };
+                });
+
+                compareChart = new Chart(ctx, {
+                    type: 'radar',
+                    data: {
+                        labels: labels,
+                        datasets: datasets
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        scales: {
+                            r: {
+                                beginAtZero: true,
+                                max: 100,
+                                ticks: {
+                                    stepSize: 20
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                            },
+                            title: {
+                                display: false
+                            }
+                        },
+                        animation: {
+                            duration: 0  // Disable animation to avoid flickering
+                        }
+                    }
+                });
+                
+                console.log('Chart created successfully:', compareChart);
             }
         });
     </script>

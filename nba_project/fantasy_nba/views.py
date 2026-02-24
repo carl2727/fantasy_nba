@@ -32,8 +32,8 @@ def health_check(request):
 def get_data_last_updated():
     """Get the last modification date of the game stats CSV file."""
     try:
-        # Path to the CSV file relative to the fantasy_nba app directory
-        csv_path = os.path.join(os.path.dirname(__file__), 'data', 'all_player_game_stats_2025_2026.csv')
+        # Path to the CSV file - go up from fantasy_nba app to nba_project, then to data folder
+        csv_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'all_player_game_stats_2025_2026.csv')
         if os.path.exists(csv_path):
             timestamp = os.path.getmtime(csv_path)
             return datetime.fromtimestamp(timestamp).strftime('%d.%m.%Y')
@@ -700,6 +700,9 @@ def show_ratings(request: HttpRequest):
     # Read injured players from session (session-persistent per user)
     injured_player_ids = [str(pid) for pid in request.session.get('injured_player_ids', [])]
     
+    # Read compare players from session
+    compare_player_ids = [str(pid) for pid in request.session.get('compare_player_ids', [])]
+    
     # Read categories visibility from session
     show_categories = request.session.get('show_categories', True)
     
@@ -723,6 +726,7 @@ def show_ratings(request: HttpRequest):
         'enable_tier_colors': request.session.get('enable_tier_colors', False),
         'highlighted_player_ids': highlighted_player_ids,
         'injured_player_ids': injured_player_ids,
+        'compare_player_ids': compare_player_ids,
         'show_categories': show_categories,
         'category_columns': category_columns,
         'data_last_updated': get_data_last_updated(),
@@ -1119,6 +1123,79 @@ def toggle_injured(request):
     request.session.modified = True
 
     return JsonResponse({'success': True, 'injured': injured_now})
+
+def toggle_compare(request):
+    """Toggle a player for comparison view."""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=405)
+
+    player_id = request.POST.get('player_id')
+    if not player_id:
+        return JsonResponse({'success': False, 'error': 'Missing player_id.'}, status=400)
+
+    # Use session to store compare players as a set-like list of strings
+    compare_players = set(str(pid) for pid in request.session.get('compare_player_ids', []))
+    player_id_str = str(player_id)
+    
+    # Limit to 2 players maximum
+    if player_id_str in compare_players:
+        compare_players.remove(player_id_str)
+        is_comparing = False
+    elif len(compare_players) < 2:
+        compare_players.add(player_id_str)
+        is_comparing = True
+    else:
+        return JsonResponse({'success': False, 'error': 'Maximum 2 players can be compared.'}, status=400)
+
+    request.session['compare_player_ids'] = list(compare_players)
+    request.session.modified = True
+
+    return JsonResponse({'success': True, 'is_comparing': is_comparing})
+
+def get_compare_data(request):
+    """Get comparison data for selected players."""
+    compare_player_ids = request.session.get('compare_player_ids', [])
+    
+    if len(compare_player_ids) < 2:
+        return JsonResponse({'success': False, 'error': 'Select 2 players to compare.'})
+    
+    ratings_df = ratings_data_module.ratings.copy()
+    compare_data = []
+    
+    # Use actual column names from ratings.py
+    categories = ['FGN_RT', 'FTN_RT', 'FG3M_RT', 'PTS_RT', 'REB_RT', 'AST_RT', 'BLK_RT', 'STL_RT', 'TOV_RT']
+    category_labels = ['FG%', 'FT%', '3PM', 'PTS', 'REB', 'AST', 'BLK', 'STL', 'TOV']
+    
+    for player_id in compare_player_ids:
+        try:
+            player_id_int = int(float(player_id))
+            player_row = ratings_df[ratings_df['Player_ID'] == player_id_int]
+            
+            if not player_row.empty:
+                player_data = {
+                    'name': player_row.iloc[0]['Name'],
+                    'stats': {}
+                }
+                
+                for cat in categories:
+                    if cat in player_row.columns:
+                        value = player_row.iloc[0][cat]
+                        # Values are already normalized to 0-100 in ratings.py
+                        player_data['stats'][cat] = float(value) if pd.notna(value) else 0.0
+                
+                compare_data.append(player_data)
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Could not process player_id '{player_id}' for comparison: {e}")
+    
+    if len(compare_data) < 2:
+        return JsonResponse({'success': False, 'error': 'Could not find data for selected players.'})
+    
+    return JsonResponse({
+        'success': True, 
+        'data': compare_data, 
+        'categories': categories,
+        'labels': category_labels
+    })
 
 @login_required
 def set_draft_order(request):
