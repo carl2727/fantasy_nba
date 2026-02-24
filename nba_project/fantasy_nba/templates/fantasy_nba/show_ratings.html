@@ -187,7 +187,7 @@
                                 <button class="compare-toggle-btn" 
                                         data-player-id="{{ player_id_val }}"
                                         title="Compare Player"
-                                        style="{% if player_id_val in compare_player_ids %}background-color: #28a745; color: white;{% endif %}">
+                                        style="{% if player_id_val|stringformat:'s' in compare_player_ids %}background-color: #28a745; color: white;{% endif %}">
                                     C
                                 </button>
                             {% else %}
@@ -195,7 +195,7 @@
                                 <button class="compare-toggle-btn" 
                                         data-player-id="{{ player_id_val }}"
                                         title="Compare Player"
-                                        style="{% if player_id_val in compare_player_ids %}background-color: #28a745; color: white;{% endif %}">
+                                        style="{% if player_id_val|stringformat:'s' in compare_player_ids %}background-color: #28a745; color: white;{% endif %}">
                                     C
                                 </button>
                             {% endif %}
@@ -210,6 +210,7 @@
 
     
 </body>
+    {{ compare_player_ids|json_script:"compare-player-ids-data" }}
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             function reloadWithoutToggle() {
@@ -316,26 +317,50 @@
             const nameSearchInput = document.getElementById('name-search');
             const ratingsTableBody = document.getElementById('ratings-table-body');
             const allRows = ratingsTableBody.getElementsByTagName('tr');
+            let compareModeActive = false;
 
-            nameSearchInput.addEventListener('keyup', function() {
+            const comparePlayerIdsData = document.getElementById('compare-player-ids-data');
+            const selectedComparePlayerIds = new Set(
+                comparePlayerIdsData ? JSON.parse(comparePlayerIdsData.textContent || '[]').map(String) : []
+            );
+
+            function syncCompareButtonStyles() {
+                document.querySelectorAll('.compare-toggle-btn').forEach(btn => {
+                    const playerId = String(btn.dataset.playerId);
+                    if (selectedComparePlayerIds.has(playerId)) {
+                        btn.style.backgroundColor = '#28a745';
+                        btn.style.color = 'white';
+                    } else {
+                        btn.style.backgroundColor = '';
+                        btn.style.color = '';
+                    }
+                });
+            }
+
+            function applyTableFilters() {
                 const searchTerm = nameSearchInput.value.toLowerCase();
 
                 for (let i = 0; i < allRows.length; i++) {
                     const row = allRows[i];
                     const playerIdVal = row.getAttribute('data-player-id');
 
-                    // Always show the team average row if it exists
                     if (playerIdVal === 'TEAM_AVERAGE_ROW') {
-                        row.style.display = ''; // Ensure it's visible
+                        row.style.display = compareModeActive ? 'none' : '';
                         continue;
                     }
 
                     const nameCell = row.querySelector('td[data-column-key="Name"]');
-                    if (nameCell) {
-                        const nameText = nameCell.textContent.toLowerCase();
-                        row.style.display = nameText.includes(searchTerm) ? '' : 'none';
-                    }
+                    const nameMatches = nameCell ? nameCell.textContent.toLowerCase().includes(searchTerm) : false;
+                    const compareMatches = !compareModeActive || selectedComparePlayerIds.has(String(playerIdVal));
+
+                    row.style.display = (nameMatches && compareMatches) ? '' : 'none';
                 }
+            }
+
+            syncCompareButtonStyles();
+
+            nameSearchInput.addEventListener('keyup', function() {
+                applyTableFilters();
             });
 
             // Set Draft Order Button
@@ -430,12 +455,15 @@
                         if (data.success) {
                             // Toggle button visual state
                             if (data.is_comparing) {
+                                selectedComparePlayerIds.add(String(playerId));
                                 this.style.backgroundColor = '#28a745';
                                 this.style.color = 'white';
                             } else {
+                                selectedComparePlayerIds.delete(String(playerId));
                                 this.style.backgroundColor = '';
                                 this.style.color = '';
                             }
+                            applyTableFilters();
                             // If compare container is open, refresh the chart
                             if (compareContainer.style.display === 'block') {
                                 loadCompareData();
@@ -461,9 +489,13 @@
                     // Toggle visibility
                     if (compareContainer.style.display === 'none') {
                         compareContainer.style.display = 'block';
+                        compareModeActive = true;
+                        applyTableFilters();
                         loadCompareData();
                     } else {
                         compareContainer.style.display = 'none';
+                        compareModeActive = false;
+                        applyTableFilters();
                     }
                 });
             }
@@ -471,6 +503,8 @@
             if (closeCompareBtn) {
                 closeCompareBtn.addEventListener('click', function() {
                     compareContainer.style.display = 'none';
+                    compareModeActive = false;
+                    applyTableFilters();
                 });
             }
 
@@ -541,8 +575,8 @@
                         pointBorderWidth: 2,
                         pointHoverBackgroundColor: '#fff',
                         pointHoverBorderColor: borderColors[index],
-                        pointRadius: 5,
-                        pointHoverRadius: 7
+                        pointRadius: 0,
+                        pointHoverRadius: 0
                     };
                 });
 
